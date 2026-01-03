@@ -8,4 +8,5 @@ cargo build --target riscv64gc-unknown-none-elf
 mkdir -p build
 
 # Convert ELF to binary
-riscv64-unknown-elf-objcopy -O binary ${CARGO_MANIFEST_DIR}/../target/riscv64gc-unknown-none-elf/debug/virtio-blk build/virtio-blk.bin
+# riscv64-unknown-elf-objcopy -O binary ${CARGO_MANIFEST_DIR}/../target/riscv64gc-unknown-none-elf/debug/virtio-blk build/virtio-blk.bin
+cp ${CARGO_MANIFEST_DIR}/../target/riscv64gc-unknown-none-elf/debug/virtio-blk build/virtio-blk.elf

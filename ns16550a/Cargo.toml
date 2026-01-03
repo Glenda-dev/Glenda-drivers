@@ -5,4 +5,8 @@ edition = "2021"
 
 [dependencies]
 libglenda-rs = { path = "../../lib/libglenda-rs" }
-volatile = "0.4"
+spin = "0.10.0"
+
+[features]
+default = []
+unicode = []

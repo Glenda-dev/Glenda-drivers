@@ -261,7 +261,7 @@ fn main() -> ! {
     log!("Initialized and listening for interrupts...");
 
     loop {
-        irq_ep.recv();
+        irq_ep.recv(0);
         uart.handle_irq();
         uart.irq.ack();
     }

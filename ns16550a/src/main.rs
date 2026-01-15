@@ -3,8 +3,8 @@
 #![allow(dead_code)]
 
 extern crate alloc;
-use glenda::cap::pagetable::perms;
-use glenda::cap::CapPtr;
+use glenda::cap::pagetable::{perms, Perms};
+use glenda::cap::{CapPtr, Endpoint, Frame, IrqHandler, VSPACE_CAP};
 use glenda::ipc::{MsgTag, UTCB};
 use glenda::protocol::unicorn as protocol;
 
@@ -31,13 +31,13 @@ const SCR: usize = 7;
 
 struct Ns16550a {
     base: usize,
-    irq: CapPtr,
+    irq: IrqHandler,
     #[cfg(feature = "unicode")]
     decoder: utf8::Utf8Decoder,
 }
 
 impl Ns16550a {
-    fn new(base: usize, irq: CapPtr) -> Self {
+    fn new(base: usize, irq: IrqHandler) -> Self {
         Self {
             base,
             irq,
@@ -132,11 +132,9 @@ impl Ns16550a {
                     }
                 }
                 #[cfg(not(feature = "unicode"))]
-                unsafe {
-                    self.putchar(0x08);
-                    self.putchar(b' ');
-                    self.putchar(0x08);
-                }
+                self.putchar(0x08);
+                self.putchar(b' ');
+                self.putchar(0x08);
             }
             _ => {
                 self.put_char(c);
@@ -153,9 +151,7 @@ impl Ns16550a {
         let mut buf = [0u8; 4];
         let s = c.encode_utf8(&mut buf);
         for b in s.as_bytes() {
-            unsafe {
-                self.putchar(*b);
-            }
+            self.putchar(*b);
         }
     }
 
@@ -189,10 +185,9 @@ impl core::fmt::Write for Ns16550a {
 #[no_mangle]
 fn main() -> ! {
     // Initialize logging (assuming cap 8 is console)
-    glenda::console::init(CapPtr(8));
-    log!("Driver starting...");
+    log!("NS16550A Driver starting...");
 
-    let unicorn = CapPtr(11); // Unicorn endpoint shared by Unicorn service
+    let unicorn = Endpoint::from(CapPtr::from(11)); // Unicorn endpoint shared by Unicorn service
 
     // 1. Find device by name
     let utcb = UTCB::current();
@@ -201,7 +196,7 @@ fn main() -> ! {
 
     let tag = MsgTag::new(protocol::UNICORN_PROTO, 2);
     let args = [protocol::GET_DEVICE_BY_NAME, len, 0, 0, 0, 0, 0];
-    unicorn.ipc_call(tag, args);
+    unicorn.call(tag, args);
     let device_id = UTCB::current().mrs_regs[0];
 
     if device_id == usize::MAX {
@@ -214,29 +209,33 @@ fn main() -> ! {
     let mmio_slot = 20;
     let tag = MsgTag::new(protocol::UNICORN_PROTO, 4);
     let args = [protocol::MAP_MMIO, device_id, 0, mmio_slot, 0, 0, 0];
-    unicorn.ipc_call(tag, args);
+    unicorn.call(tag, args);
     if UTCB::current().mrs_regs[0] != 0 {
         log!("Failed to map MMIO");
         loop {}
     }
 
     // Map into our VSpace
-    let vspace = CapPtr(1);
+    let vspace = VSPACE_CAP;
     let mmio_va = 0x5000_0000;
-    vspace.pagetable_map(CapPtr(mmio_slot), mmio_va, perms::READ | perms::WRITE);
+    vspace.map(
+        Frame::from(CapPtr::from(mmio_slot)),
+        mmio_va,
+        Perms::from(perms::READ | perms::WRITE | perms::USER),
+    );
     log!("MMIO mapped at {:#x}", mmio_va);
     // 3. Get IRQ
     let irq_slot = 21;
     let tag = MsgTag::new(protocol::UNICORN_PROTO, 4);
     let args = [protocol::GET_IRQ, device_id, 0, irq_slot, 0, 0, 0];
-    unicorn.ipc_call(tag, args);
+    unicorn.call(tag, args);
     if UTCB::current().mrs_regs[0] != 0 {
         log!("Failed to get IRQ");
         loop {}
     }
     log!("IRQ capability obtained at slot {}", irq_slot);
 
-    let mut uart = Ns16550a::new(mmio_va, CapPtr(irq_slot));
+    let mut uart = Ns16550a::new(mmio_va, IrqHandler::from(CapPtr::from(irq_slot)));
     uart.init();
 
     use core::fmt::Write;
@@ -246,33 +245,24 @@ fn main() -> ! {
     // 4. Bind IRQ to an endpoint for notifications
     let irq_ep_slot = 22;
     // Request a new endpoint from Factotum
-    let factotum = CapPtr(10);
+    let factotum = Endpoint::from(CapPtr::from(10));
     let tag = MsgTag::new(glenda::protocol::factotum::FACTOTUM_PROTO, 5);
-    let args = [
-        glenda::protocol::factotum::REQUEST_CAP,
-        glenda::protocol::factotum::CAP_TYPE_ENDPOINT,
-        0,
-        irq_ep_slot,
-        0,
-        0,
-        0,
-    ];
-    factotum.ipc_call(tag, args);
+    factotum.call(tag, args);
     if UTCB::current().mrs_regs[0] != 0 {
         log!("Failed to allocate IRQ endpoint");
         loop {}
     }
-    let irq_ep = CapPtr(irq_ep_slot);
+    let irq_ep = Endpoint::from(CapPtr::from(irq_ep_slot));
 
     // Bind
-    uart.irq.irq_handler_set_notification(irq_ep);
-    uart.irq.irq_handler_ack();
+    uart.irq.set_notification(irq_ep);
+    uart.irq.ack();
 
     log!("Initialized and listening for interrupts...");
 
     loop {
-        irq_ep.ipc_recv();
+        irq_ep.recv();
         uart.handle_irq();
-        uart.irq.irq_handler_ack();
+        uart.irq.ack();
     }
 }

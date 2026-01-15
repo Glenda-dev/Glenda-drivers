@@ -3,8 +3,7 @@
 
 extern crate alloc;
 use core::ptr::NonNull;
-use glenda::cap::CapPtr;
-use glenda::protocol::unicorn::*;
+use glenda::cap::{CapPtr, TCB_CAP};
 use virtio_common::{consts::*, VirtIOError, VirtIOTransport};
 
 struct VirtIOBlk {
@@ -64,9 +63,10 @@ fn main() -> ! {
 
     driver.init().expect("Failed to init device");
 
-    let tcb_cap = CapPtr::new(2); // TCB is usually in slot 2
+    let tcb_cap = TCB_CAP;
     loop {
-        tcb_cap.tcb_suspend();
+        tcb_cap.suspend();
         // Wait for IRQ
+        unimplemented!()
     }
 }

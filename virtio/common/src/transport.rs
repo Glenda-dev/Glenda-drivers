@@ -8,7 +8,7 @@ pub struct VirtIOTransport {
 
 impl VirtIOTransport {
     pub unsafe fn new(base: NonNull<u8>) -> Result<Self> {
-        let mut transport = Self { base };
+        let transport = Self { base };
 
         if transport.read_reg(OFF_MAGIC) != MAGIC_VALUE {
             return Err(VirtIOError::InvalidHeader);

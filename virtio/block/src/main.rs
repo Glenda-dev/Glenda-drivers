@@ -1,5 +1,6 @@
 #![no_std]
 #![no_main]
+#![allow(dead_code)]
 
 extern crate alloc;
 use core::ptr::NonNull;
@@ -48,7 +49,7 @@ impl VirtIOBlk {
 }
 
 #[no_mangle]
-fn main() -> ! {
+fn main() -> usize {
     // 1. Get Device Capability
     let device_cap = CapPtr::new(10);
 
@@ -69,4 +70,5 @@ fn main() -> ! {
         // Wait for IRQ
         unimplemented!()
     }
+    1
 }

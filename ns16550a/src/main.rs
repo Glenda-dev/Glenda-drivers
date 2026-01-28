@@ -183,7 +183,7 @@ impl core::fmt::Write for Ns16550a {
 }
 
 #[no_mangle]
-fn main() -> ! {
+fn main() -> usize {
     // Initialize logging (assuming cap 8 is console)
     log!("NS16550A Driver starting...");
 
@@ -265,4 +265,5 @@ fn main() -> ! {
         uart.handle_irq();
         uart.irq.ack();
     }
+    1
 }

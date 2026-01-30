@@ -51,7 +51,7 @@ impl VirtIOBlk {
 #[no_mangle]
 fn main() -> usize {
     // 1. Get Device Capability
-    let device_cap = CapPtr::new(10);
+    let device_cap = CapPtr::from(10);
 
     // 2. Map MMIO (Mocked for now)
     // let mmio_cap = device_cap.invoke(MAP_MMIO, ...);

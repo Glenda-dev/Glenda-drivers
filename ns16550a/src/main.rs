@@ -6,7 +6,7 @@ extern crate alloc;
 use glenda::cap::pagetable::{perms, Perms};
 use glenda::cap::{CapPtr, Endpoint, Frame, IrqHandler, VSPACE_CAP};
 use glenda::ipc::{MsgTag, UTCB};
-use glenda::protocol::unicorn as protocol;
+use glenda::protocol::device as protocol;
 
 #[macro_export]
 macro_rules! log {
@@ -246,7 +246,7 @@ fn main() -> usize {
     let irq_ep_slot = 22;
     // Request a new endpoint from Factotum
     let factotum = Endpoint::from(CapPtr::from(10));
-    let tag = MsgTag::new(glenda::protocol::factotum::FACTOTUM_PROTO, 5);
+    let tag = MsgTag::new(glenda::protocol::process::FACTOTUM_PROTO, 5);
     factotum.call(tag, args);
     if UTCB::current().mrs_regs[0] != 0 {
         log!("Failed to allocate IRQ endpoint");

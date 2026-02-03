@@ -195,7 +195,7 @@ fn main() -> usize {
     let (_offset, len) = utcb.append_str("uart@10000000").expect("Failed to append name");
 
     let tag = MsgTag::new(protocol::UNICORN_PROTO, 2);
-    let args = [protocol::GET_DEVICE_BY_NAME, len, 0, 0, 0, 0, 0];
+    let args = [protocol::GET_DEVICE_BY_NAME, len, 0, 0, 0, 0, 0, 0];
     unicorn.call(tag, args);
     let device_id = UTCB::current().mrs_regs[0];
 
@@ -208,7 +208,7 @@ fn main() -> usize {
     // 2. Map MMIO
     let mmio_slot = 20;
     let tag = MsgTag::new(protocol::UNICORN_PROTO, 4);
-    let args = [protocol::MAP_MMIO, device_id, 0, mmio_slot, 0, 0, 0];
+    let args = [protocol::MAP_MMIO, device_id, 0, mmio_slot, 0, 0, 0, 0];
     unicorn.call(tag, args);
     if UTCB::current().mrs_regs[0] != 0 {
         log!("Failed to map MMIO");
@@ -227,7 +227,7 @@ fn main() -> usize {
     // 3. Get IRQ
     let irq_slot = 21;
     let tag = MsgTag::new(protocol::UNICORN_PROTO, 4);
-    let args = [protocol::GET_IRQ, device_id, 0, irq_slot, 0, 0, 0];
+    let args = [protocol::GET_IRQ, device_id, 0, irq_slot, 0, 0, 0, 0];
     unicorn.call(tag, args);
     if UTCB::current().mrs_regs[0] != 0 {
         log!("Failed to get IRQ");

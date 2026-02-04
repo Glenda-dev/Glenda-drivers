@@ -8,5 +8,5 @@ libglenda-rs = { path = "../../lib/libglenda-rs", features = ["rt-service"] }
 spin = "0.10.0"
 
 [features]
-default = []
+default = ["unicode"]
 unicode = []

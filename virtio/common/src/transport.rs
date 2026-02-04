@@ -48,14 +48,6 @@ impl VirtIOTransport {
         unsafe { self.write_reg(OFF_STATUS, status) }
     }
 
-    pub fn get_features(&self) -> u32 {
-        unsafe { self.read_reg(OFF_HOST_FEATURES) }
-    }
-
-    pub fn set_features(&self, features: u32) {
-        unsafe { self.write_reg(OFF_GUEST_FEATURES, features) }
-    }
-
     pub fn read_config(&self, offset: usize) -> u8 {
         unsafe {
             let ptr = self.base.as_ptr().add(OFF_CONFIG + offset) as *const u8;

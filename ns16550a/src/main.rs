@@ -5,6 +5,7 @@
 extern crate alloc;
 use glenda::cap::pagetable::{perms, Perms};
 use glenda::cap::{CapPtr, Endpoint, Frame, IrqHandler, VSPACE_CAP};
+use glenda::interface::device::UartDevice;
 use glenda::ipc::{MsgTag, UTCB};
 use glenda::protocol::device as protocol;
 
@@ -104,7 +105,7 @@ impl Ns16550a {
     fn handle_char(&mut self, c: char) {
         match c {
             '\r' => {
-                self.put_char('\n');
+                self.put_char('\n' as u8);
                 #[cfg(feature = "unicode")]
                 utf8::CONSOLE_ECHO.lock().clear_line();
             }
@@ -137,7 +138,7 @@ impl Ns16550a {
                 self.putchar(0x08);
             }
             _ => {
-                self.put_char(c);
+                self.put_unicode_char(c);
                 #[cfg(feature = "unicode")]
                 {
                     let w = utf8::char_display_width(c);
@@ -147,7 +148,7 @@ impl Ns16550a {
         }
     }
 
-    fn put_char(&self, c: char) {
+    fn put_unicode_char(&self, c: char) {
         let mut buf = [0u8; 4];
         let s = c.encode_utf8(&mut buf);
         for b in s.as_bytes() {
@@ -173,11 +174,25 @@ impl Ns16550a {
     }
 }
 
+impl UartDevice for Ns16550a {
+    fn put_char(&mut self, c: u8) {
+        self.putchar(c);
+    }
+
+    fn get_char(&mut self) -> Option<u8> {
+        self.getchar()
+    }
+
+    fn put_str(&mut self, s: &str) {
+        for c in s.bytes() {
+            self.putchar(c);
+        }
+    }
+}
+
 impl core::fmt::Write for Ns16550a {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
-        for c in s.chars() {
-            self.put_char(c);
-        }
+        self.put_str(s);
         Ok(())
     }
 }
@@ -190,14 +205,14 @@ fn main() -> usize {
     let unicorn = Endpoint::from(CapPtr::from(11)); // Unicorn endpoint shared by Unicorn service
 
     // 1. Find device by name
-    let utcb = UTCB::current();
+    let utcb = unsafe { UTCB::get() };
     utcb.clear();
     let (_offset, len) = utcb.append_str("uart@10000000").expect("Failed to append name");
 
-    let tag = MsgTag::new(protocol::UNICORN_PROTO, 2);
+    let tag = MsgTag::new(protocol::UNICORN_PROTO, 2, glenda::ipc::MsgFlags::NONE);
     let args = [protocol::GET_DEVICE_BY_NAME, len, 0, 0, 0, 0, 0, 0];
     unicorn.call(tag, args);
-    let device_id = UTCB::current().mrs_regs[0];
+    let device_id = unsafe { UTCB::get().mrs_regs[0] };
 
     if device_id == usize::MAX {
         log!("Device 'uart@10000000' not found");
@@ -207,10 +222,11 @@ fn main() -> usize {
 
     // 2. Map MMIO
     let mmio_slot = 20;
-    let tag = MsgTag::new(protocol::UNICORN_PROTO, 4);
+    let tag = MsgTag::new(protocol::UNICORN_PROTO, 4, glenda::ipc::MsgFlags::HAS_CAP);
     let args = [protocol::MAP_MMIO, device_id, 0, mmio_slot, 0, 0, 0, 0];
+
     unicorn.call(tag, args);
-    if UTCB::current().mrs_regs[0] != 0 {
+    if unsafe { UTCB::get() }.mrs_regs[0] != 0 {
         log!("Failed to map MMIO");
         loop {}
     }
@@ -221,15 +237,16 @@ fn main() -> usize {
     vspace.map(
         Frame::from(CapPtr::from(mmio_slot)),
         mmio_va,
-        Perms::from(perms::READ | perms::WRITE | perms::USER),
+        Perms::READ | Perms::WRITE | Perms::USER,
     );
     log!("MMIO mapped at {:#x}", mmio_va);
     // 3. Get IRQ
     let irq_slot = 21;
-    let tag = MsgTag::new(protocol::UNICORN_PROTO, 4);
+    let tag = MsgTag::new(protocol::UNICORN_PROTO, 4, glenda::ipc::MsgFlags::HAS_CAP);
     let args = [protocol::GET_IRQ, device_id, 0, irq_slot, 0, 0, 0, 0];
+
     unicorn.call(tag, args);
-    if UTCB::current().mrs_regs[0] != 0 {
+    if unsafe { UTCB::get() }.mrs_regs[0] != 0 {
         log!("Failed to get IRQ");
         loop {}
     }
@@ -246,9 +263,11 @@ fn main() -> usize {
     let irq_ep_slot = 22;
     // Request a new endpoint from Factotum
     let factotum = Endpoint::from(CapPtr::from(10));
-    let tag = MsgTag::new(glenda::protocol::process::FACTOTUM_PROTO, 5);
+    let tag =
+        MsgTag::new(glenda::protocol::process::FACTOTUM_PROTO, 5, glenda::ipc::MsgFlags::NONE);
     factotum.call(tag, args);
-    if UTCB::current().mrs_regs[0] != 0 {
+
+    if unsafe { UTCB::get() }.mrs_regs[0] != 0 {
         log!("Failed to allocate IRQ endpoint");
         loop {}
     }
@@ -261,9 +280,9 @@ fn main() -> usize {
     log!("Initialized and listening for interrupts...");
 
     loop {
-        irq_ep.recv(0);
+        irq_ep.recv(CapPtr::null()).unwrap();
         uart.handle_irq();
-        uart.irq.ack();
+        uart.irq.ack().unwrap();
     }
     1
 }

@@ -35,16 +35,16 @@ impl DriverService for NetService {
         // Discovery and Mapping
         // Assuming we need to ask Unicorn (root bus) to map us or we map ourselves if we have permission.
         // Similar to BLK service.
-        
+
         let mmio_va = 0x6000_2000; // Use a different address than BLK (0x6000_0000)
-        // Note: Real allocation should be dynamic or managed.
-        
+                                   // Note: Real allocation should be dynamic or managed.
+
         // Mock mapping via Unicorn if needed, or direct VSPACE map if we have the cap.
         // BLK Service did:
         // let unicorn = Endpoint::from(CapPtr::from(11));
         // ... msg ...
         // VSPACE_CAP.map(...)
-        
+
         // We replicate the pattern:
         // Assume 'node' gives us the physical address.
         // We map it to 'mmio_va'.
@@ -53,25 +53,25 @@ impl DriverService for NetService {
         // In BLK service: `CapPtr::from(mmio_slot)` was used.
         // We assume we are assigned a slot.
         // Let's assume slot 21 for Net.
-        
+
         let mmio_slot = 21;
-         let unicorn = Endpoint::from(CapPtr::from(11));
+        let unicorn = Endpoint::from(CapPtr::from(11));
         // MAP_MMIO = 1? Check protocol. Assuming same as BLK context.
         // device_protocol::MAP_MMIO
-        
+
         // We need device_protocol definition.
         use glenda::protocol::device as device_protocol;
 
         let tag = MsgTag::new(device_protocol::BLOCK_PROTO, 4, MsgFlags::HAS_CAP); // Probably GENERIC or specific proto?
-        // Using BLOCK_PROTO might be wrong tag proto, but Unicorn listener likely checks label.
-        // BLK used: MsgTag::new(device_protocol::BLOCK_PROTO, ...)
-        
+                                                                                   // Using BLOCK_PROTO might be wrong tag proto, but Unicorn listener likely checks label.
+                                                                                   // BLK used: MsgTag::new(device_protocol::BLOCK_PROTO, ...)
+
         // Let's use generic proto for init calls if possible, or assume Unicorn handles it.
-        // Using 0 (GENERIC) for now or check what BLK used. 
+        // Using 0 (GENERIC) for now or check what BLK used.
         // BLK code: `device_protocol::BLOCK_PROTO`
-        
+
         let args = [device_protocol::MAP_MMIO, node.id, 0, mmio_slot, 0, 0, 0, 0];
-        
+
         // We'll mimic the BLK serivce exactly for now assuming Unicorn handles device protocol messages broadly.
         unicorn.call(tag, args).expect("Failed request MMIO cap");
 
@@ -82,12 +82,9 @@ impl DriverService for NetService {
                 Perms::READ | Perms::WRITE | Perms::USER,
             )
             .expect("Failed to map MMIO");
-            
-        let mut net = unsafe {
-            VirtIONet::new(mmio_va)
-                .expect("Failed to init virtio-net")
-        };
-        
+
+        let mut net = unsafe { VirtIONet::new(mmio_va).expect("Failed to init virtio-net") };
+
         self.net = Some(net);
     }
 }
@@ -144,14 +141,13 @@ impl SystemService for NetService {
                 // MacAddress struct is [u8; 6].
                 // We packaging it into u64?
                 // args[0] = mac[0..6]...
-                let mac_val = u64::from_le_bytes([
-                    mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], 0, 0
-                ]);
+                let mac_val =
+                    u64::from_le_bytes([mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], 0, 0]);
                 Ok([mac_val as usize, 0, 0, 0, 0, 0, 0, 0])
             }
             net_proto::SEND => {
                 // args[0] = len
-                // Payload in shared buf? 
+                // Payload in shared buf?
                 // Stub
                 Ok([0; 8])
             }

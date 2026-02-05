@@ -1,6 +1,6 @@
 use core::ptr::NonNull;
-use virtio_common::{Result, VirtIOError, VirtIOTransport};
 use virtio_common::consts::*;
+use virtio_common::{Result, VirtIOError, VirtIOTransport};
 
 pub struct VirtIONet {
     transport: VirtIOTransport,
@@ -45,12 +45,12 @@ impl VirtIONet {
         // Let's assume we want MAC.
         // VIRTIO_NET_F_MAC = 5 (1 << 5)
         let device_features = transport.get_features();
-        let driver_features = device_features & (1 << 5); 
+        let driver_features = device_features & (1 << 5);
         transport.set_features(driver_features);
 
         status |= 8; // FEATURES_OK
         transport.set_status(status);
-        
+
         // Check if FEATURES_OK is still set
         if (transport.get_status() & 8) == 0 {
             return Err(VirtIOError::InvalidHeader); // Feature negotiation failed
@@ -62,8 +62,8 @@ impl VirtIONet {
         // for now we just proceed to DRIVER_OK.
 
         // Read MAC
-        // Only if VIRTIO_NET_F_MAC negotiated. 
-        // Config space is after MMIO regs (0x100) usually ? 
+        // Only if VIRTIO_NET_F_MAC negotiated.
+        // Config space is after MMIO regs (0x100) usually ?
         // Transport `read_config` needed?
         // Let's assume generic transport exposes way to read config.
         // Or implement specific config read here.
@@ -81,17 +81,21 @@ impl VirtIONet {
         for i in 0..6 {
             mac[i] = core::ptr::read_volatile(mac_ptr.add(i));
         }
-        
-        log::info!("VirtIO Net MAC: {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}", 
-            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+
+        log::info!(
+            "VirtIO Net MAC: {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
+            mac[0],
+            mac[1],
+            mac[2],
+            mac[3],
+            mac[4],
+            mac[5]
+        );
 
         status |= 4; // DRIVER_OK
         transport.set_status(status);
 
-        Ok(Self {
-            transport,
-            mac,
-        })
+        Ok(Self { transport, mac })
     }
 
     pub fn mac(&self) -> [u8; 6] {

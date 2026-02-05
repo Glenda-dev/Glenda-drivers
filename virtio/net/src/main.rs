@@ -20,7 +20,7 @@ fn main() -> usize {
     // We assume we are started by Factotum and given an endpoint to listen on.
     // For now we hardcode similar to BLK example, or assume passed handles.
     // BLK example: service.listen(Endpoint::from(CapPtr::from(12)), CapPtr::from(1)).unwrap();
-    
+
     // Check if we can just rely on standard init if SystemService trait covers it?
     // SystemService has `listen`.
     // We manually call listen for now.

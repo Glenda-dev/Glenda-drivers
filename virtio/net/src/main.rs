@@ -17,7 +17,7 @@ fn main() -> usize {
     let mut service = NetService::new();
 
     // Standard service layout (similar to BLK)
-    // We assume we are started by Factotum and given an endpoint to listen on.
+    // We assume we are started by Warren and given an endpoint to listen on.
     // For now we hardcode similar to BLK example, or assume passed handles.
     // BLK example: service.listen(Endpoint::from(CapPtr::from(12)), CapPtr::from(1)).unwrap();
 

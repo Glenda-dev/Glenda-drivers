@@ -65,9 +65,9 @@ impl DriverService for UartService {
 
         // 3. Allocate IRQ endpoint
         let irq_ep_slot = 22;
-        let factotum = Endpoint::from(CapPtr::from(10));
+        let warren = Endpoint::from(CapPtr::from(10));
         let tag = MsgTag::new(protocol::PROCESS_PROTO, 1, glenda::ipc::MsgFlags::NONE); // ALLOC_CAP
-        let _ = factotum.call(tag, [0; 8]); // Dummy for now
+        let _ = warren.call(tag, [0; 8]); // Dummy for now
 
         let irq_ep = Endpoint::from(CapPtr::from(irq_ep_slot));
         let uart = Ns16550a::new(mmio_va, IrqHandler::from(CapPtr::from(irq_slot)));

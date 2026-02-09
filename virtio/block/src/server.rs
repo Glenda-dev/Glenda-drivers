@@ -126,7 +126,7 @@ impl SystemService for BlockService {
         flags: MsgFlags,
         msg: MsgArgs,
     ) -> Result<(), Error> {
-        let utcb = unsafe { UTCB::get() };
+        let mut utcb = unsafe { UTCB::new() };
         utcb.msg_tag = MsgTag::new(root_protocol::GENERIC_PROTO, msg.len(), flags);
         utcb.mrs_regs = msg;
         self.reply.reply(utcb.msg_tag, utcb.mrs_regs)

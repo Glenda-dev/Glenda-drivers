@@ -101,7 +101,7 @@ impl FatFs {
                 break;
             }
             if next == 0x0FFFFFF7 {
-                return Err(Error::Io);
+                return Err(Error::IoError);
             }
             curr = next;
         }
@@ -112,12 +112,12 @@ impl FatFs {
         let sector = self.ops.cluster_to_sector(cluster);
         let size = (self.ops.sectors_per_cluster() as u64) * (self.ops.bytes_per_sector() as u64);
         if buf.len() < size as usize {
-            return Err(Error::BufferOverflow);
+            return Err(Error::MessageTooLong);
         }
         let offset = sector * (self.ops.bytes_per_sector() as u64);
         self.reader
             .read_offset(offset, &mut buf[..size as usize])
-            .map_err(|_| Error::Io)
+            .map_err(|_| Error::IoError)
             .map(|_| ())
     }
 
@@ -130,12 +130,12 @@ impl FatFs {
         let bps = self.ops.bytes_per_sector() as u64;
         let size = num_sectors as u64 * bps;
         if buf.len() < size as usize {
-            return Err(Error::BufferOverflow);
+            return Err(Error::MessageTooLong);
         }
         let offset = start_sector * bps;
         self.reader
             .read_offset(offset, &mut buf[..size as usize])
-            .map_err(|_| Error::Io)
+            .map_err(|_| Error::IoError)
             .map(|_| ())
     }
 

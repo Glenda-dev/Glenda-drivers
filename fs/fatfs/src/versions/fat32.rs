@@ -22,7 +22,7 @@ impl FatOps for Fat32Ops {
         
         let mut buf = alloc::vec![0u8; self.bytes_per_sector as usize];
         let read_pos = sector * self.bytes_per_sector as u64;
-        reader.read_offset(read_pos, &mut buf).map_err(|_| Error::Io)?;
+        reader.read_offset(read_pos, &mut buf).map_err(|_| Error::IoError)?;
         
         let ptr = unsafe { buf.as_ptr().add(entry_offset) };
         let val = unsafe { core::ptr::read_unaligned(ptr as *const u32) };

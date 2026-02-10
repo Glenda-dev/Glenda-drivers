@@ -241,7 +241,7 @@ impl ExtFs {
         let mut buf_ptr = 0;
 
         for blk_idx in start_block_idx..end_block_idx {
-            let pblock = self.get_block_addr(&inode, blk_idx).map_err(|_| Error::Io)?;
+            let pblock = self.get_block_addr(&inode, blk_idx).map_err(|_| Error::IoError)?;
 
             // Simple Read-Modify-Write
             let mut block_data = alloc::vec![0u8; self.block_size as usize];

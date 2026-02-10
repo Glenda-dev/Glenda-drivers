@@ -23,7 +23,7 @@ impl FatOps for Fat16Ops {
 
         let mut buf = alloc::vec![0u8; self.bytes_per_sector as usize];
         let read_pos = sector * self.bytes_per_sector as u64;
-        reader.read_offset(read_pos, &mut buf).map_err(|_| Error::Io)?;
+        reader.read_offset(read_pos, &mut buf).map_err(|_| Error::IoError)?;
 
         // Read u16
         let val = unsafe {

@@ -101,7 +101,7 @@ impl ExtOps for Ext4Ops {
         let mut current_block_data = [0u8; 4096]; // Buffer for tree traversal
                                                   // Need to be careful about block size here.
         if block_size > 4096 {
-            return Err(Error::BufferOverflow);
+            return Err(Error::MessageTooLong);
         }
 
         // Initial check on root

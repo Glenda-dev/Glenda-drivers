@@ -2,6 +2,7 @@
 name = "goldfish-rtc"
 version = "0.1.0"
 edition = "2021"
+description = "Goldfish RTC driver for Glenda Microkernel"
 
 [dependencies]
 libglenda-rs = { path = "../../../lib/libglenda-rs", features = ["rt-service"] }

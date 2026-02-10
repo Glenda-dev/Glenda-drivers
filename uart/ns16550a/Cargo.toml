@@ -2,6 +2,7 @@
 name = "ns16550a"
 version = "0.1.0"
 edition = "2021"
+description = "NS16550A UART driver for Glenda Microkernel"
 
 [dependencies]
 libglenda-rs = { path = "../../../lib/libglenda-rs", features = ["rt-service"] }

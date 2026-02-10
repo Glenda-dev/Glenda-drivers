@@ -1,9 +1,9 @@
 #![no_std]
 #![no_main]
+#![allow(dead_code)]
 
 extern crate alloc;
 
-use glenda::cap::{CapPtr, Endpoint};
 use glenda::interface::system::SystemService;
 
 mod block;
@@ -15,9 +15,16 @@ mod versions;
 
 pub use server::Ext4Service;
 
-#[no_mangle]
+#[macro_export]
+macro_rules! log {
+    ($($arg:tt)*) => ({
+        glenda::println!("{}ExtFS: {}{}", glenda::console::ANSI_BLUE, format_args!($($arg)*), glenda::console::ANSI_RESET);
+    })
+}
+
+#[unsafe(no_mangle)]
 fn main() -> usize {
-    let mut _service = Ext4Service::new();
-    // service.run().expect("Ext4 service crashed");
+    let mut service = Ext4Service::new();
+    service.run().expect("Ext4 service crashed");
     0
 }

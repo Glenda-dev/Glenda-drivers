@@ -1,19 +1,17 @@
-use alloc::boxed::Box;
-use alloc::vec::Vec;
-use core::mem::size_of;
-use core::slice;
-
-use glenda::cap::Endpoint;
-use glenda::error::Error;
-use glenda::interface::fs::{FileHandleService, FileSystemJournalService, FileSystemService};
-use glenda::protocol::fs::{DEntry, OpenFlags, Stat};
-
 use crate::block::BlockReader;
 use crate::defs::ext4::*;
+use crate::log;
 use crate::ops::ExtOps;
 use crate::versions::ext2::Ext2Ops;
 use crate::versions::ext3::Ext3Ops;
 use crate::versions::ext4::Ext4Ops;
+use alloc::boxed::Box;
+use alloc::vec::Vec;
+use core::slice;
+use glenda::cap::Endpoint;
+use glenda::error::Error;
+use glenda::interface::fs::{FileHandleService, FileSystemJournalService, FileSystemService};
+use glenda::protocol::fs::{DEntry, OpenFlags, Stat};
 
 pub struct ExtFs {
     reader: BlockReader,
@@ -26,19 +24,19 @@ pub struct ExtFs {
 
 impl ExtFs {
     pub fn new(block_device: Endpoint) -> Self {
-        let mut reader = BlockReader::new(block_device);
+        let reader = BlockReader::new(block_device);
 
         // ... (existing helper logic in new)
         let mut sb_buf = [0u8; 1024];
         if let Err(_) = reader.read_offset(SUPER_BLOCK_OFFSET, &mut sb_buf) {
-            log::error!("Failed to read superblock");
+            panic!("Failed to read superblock");
         }
 
         let sb = unsafe { core::ptr::read_unaligned(sb_buf.as_ptr() as *const SuperBlock) };
         let magic = sb.s_magic;
 
         if magic != EXT4_SUPER_MAGIC {
-            log::error!("Invalid Ext4 Magic: {:x}", magic);
+            panic!("Invalid Ext4 Magic: {:x}", magic);
         }
 
         let block_size = 1024 << sb.s_log_block_size;
@@ -46,13 +44,13 @@ impl ExtFs {
 
         // Determine OPS based on features
         let ops: Box<dyn ExtOps> = if (sb.s_feature_incompat & EXT4_FEATURE_INCOMPAT_EXTENTS) != 0 {
-            log::info!("Detected Ext4 with Extents");
+            log!("Detected Ext4 with Extents");
             Box::new(Ext4Ops)
         } else if (sb.s_feature_compat & EXT4_FEATURE_COMPAT_HAS_JOURNAL) != 0 {
-            log::info!("Detected Ext3 (Journaled)");
+            log!("Detected Ext3 (Journaled)");
             Box::new(Ext3Ops)
         } else {
-            log::info!("Detected Ext2");
+            log!("Detected Ext2");
             Box::new(Ext2Ops)
         };
 

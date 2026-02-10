@@ -1,10 +1,9 @@
 [package]
 name = "virtio-net"
 version = "0.1.0"
+description = "VirtIO-Net driver for Glenda Microkernel"
 edition = "2021"
 
 [dependencies]
 libglenda-rs = { path = "../../../lib/libglenda-rs", features = ["rt-service"] }
 virtio-common = { path = "../common" }
-volatile = "0.4"
-log = "0.4"

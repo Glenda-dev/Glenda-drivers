@@ -1,6 +1,4 @@
-use alloc::vec::Vec;
 use crate::block::BlockReader;
-use crate::defs::*;
 use crate::ops::{FatOps, RootLocation};
 use glenda::error::Error;
 
@@ -17,16 +15,16 @@ impl FatOps for Fat32Ops {
         let fat_offset = cluster as u64 * 4;
         let fat_sector_offset = fat_offset / self.bytes_per_sector as u64;
         let entry_offset = (fat_offset % self.bytes_per_sector as u64) as usize;
-        
+
         let sector = self.fat_start_sector + fat_sector_offset;
-        
+
         let mut buf = alloc::vec![0u8; self.bytes_per_sector as usize];
         let read_pos = sector * self.bytes_per_sector as u64;
         reader.read_offset(read_pos, &mut buf).map_err(|_| Error::IoError)?;
-        
+
         let ptr = unsafe { buf.as_ptr().add(entry_offset) };
         let val = unsafe { core::ptr::read_unaligned(ptr as *const u32) };
-        
+
         Ok(val & 0x0FFFFFFF)
     }
 
@@ -39,6 +37,10 @@ impl FatOps for Fat32Ops {
         RootLocation::Cluster(self.root_cluster)
     }
 
-    fn bytes_per_sector(&self) -> u32 { self.bytes_per_sector as u32 }
-    fn sectors_per_cluster(&self) -> u32 { self.sectors_per_cluster as u32 }
+    fn bytes_per_sector(&self) -> u32 {
+        self.bytes_per_sector as u32
+    }
+    fn sectors_per_cluster(&self) -> u32 {
+        self.sectors_per_cluster as u32
+    }
 }

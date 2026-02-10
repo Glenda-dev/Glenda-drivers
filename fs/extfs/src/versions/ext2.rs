@@ -1,7 +1,6 @@
 use crate::block::BlockReader;
 use crate::defs::ext4::*;
 use crate::ops::ExtOps;
-use alloc::vec::Vec;
 use glenda::error::Error;
 
 pub struct Ext2Ops;

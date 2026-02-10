@@ -2,6 +2,7 @@
 name = "virtio-common"
 version = "0.1.0"
 edition = "2021"
+description = "VirtIO common driver library for Glenda Microkernel"
 
 [dependencies]
 libglenda-rs = { path = "../../../lib/libglenda-rs" }

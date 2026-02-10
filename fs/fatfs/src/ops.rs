@@ -1,6 +1,4 @@
 use crate::block::BlockReader;
-use crate::defs::DirEntry;
-use alloc::boxed::Box;
 use glenda::error::Error;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

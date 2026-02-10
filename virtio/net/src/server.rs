@@ -1,16 +1,15 @@
-use core::ptr::NonNull;
-use glenda::cap::{CapPtr, Endpoint, Frame, Reply, VSPACE_CAP};
+use crate::net::VirtIONet;
+use glenda::cap::{CapPtr, Endpoint, Frame, Reply, RECV_SLOT, VSPACE_CAP};
 use glenda::error::Error;
-use glenda::interface::device::DriverService;
-use glenda::interface::system::SystemService;
-use glenda::ipc::{Badge, MsgArgs, MsgFlags, MsgTag, UTCB};
-use glenda::manager::device::DeviceNode;
+use glenda::interface::device::NetDevice;
+use glenda::interface::{DriverService, SystemService};
+use glenda::ipc::server::handle_call;
+use glenda::ipc::{MsgFlags, MsgTag, UTCB};
 use glenda::mem::Perms;
 use glenda::protocol as root_protocol;
 use glenda::protocol::device as device_protocol;
 use glenda::protocol::device::net as net_proto;
-
-use crate::net::VirtIONet;
+use glenda::protocol::device::DeviceNode;
 
 pub struct NetService {
     net: Option<VirtIONet>,
@@ -32,49 +31,23 @@ impl NetService {
 
 impl DriverService for NetService {
     fn init(&mut self, node: DeviceNode) {
-        // Discovery and Mapping
-        // Assuming we need to ask Unicorn (root bus) to map us or we map ourselves if we have permission.
-        // Similar to BLK service.
-
-        let mmio_va = 0x6000_2000; // Use a different address than BLK (0x6000_0000)
-                                   // Note: Real allocation should be dynamic or managed.
-
-        // Mock mapping via Unicorn if needed, or direct VSPACE map if we have the cap.
-        // BLK Service did:
-        // let unicorn = Endpoint::from(CapPtr::from(11));
-        // ... msg ...
-        // VSPACE_CAP.map(...)
-
-        // We replicate the pattern:
-        // Assume 'node' gives us the physical address.
-        // We map it to 'mmio_va'.
-        // Where do we get the frame capability for the MMIO region?
-        // Unicorn should provide it or we forge it if we are root?
-        // In BLK service: `CapPtr::from(mmio_slot)` was used.
-        // We assume we are assigned a slot.
-        // Let's assume slot 21 for Net.
+        log!("Initializing Net device: {}", node.id);
 
         let mmio_slot = 21;
         let unicorn = Endpoint::from(CapPtr::from(11));
-        // MAP_MMIO = 1? Check protocol. Assuming same as BLK context.
-        // device_protocol::MAP_MMIO
+        let tag =
+            MsgTag::new(device_protocol::NET_PROTO, device_protocol::MAP_MMIO, MsgFlags::HAS_CAP);
 
-        // We need device_protocol definition.
-        use glenda::protocol::device as device_protocol;
+        let mut utcb = unsafe { UTCB::new() };
+        utcb.clear();
+        utcb.set_msg_tag(tag);
+        utcb.set_mr(0, node.id);
+        utcb.set_mr(1, 0);
+        utcb.set_mr(2, mmio_slot);
 
-        let tag = MsgTag::new(device_protocol::BLOCK_PROTO, 4, MsgFlags::HAS_CAP); // Probably GENERIC or specific proto?
-                                                                                   // Using BLOCK_PROTO might be wrong tag proto, but Unicorn listener likely checks label.
-                                                                                   // BLK used: MsgTag::new(device_protocol::BLOCK_PROTO, ...)
+        unicorn.call(&mut utcb).expect("Failed request MMIO cap");
 
-        // Let's use generic proto for init calls if possible, or assume Unicorn handles it.
-        // Using 0 (GENERIC) for now or check what BLK used.
-        // BLK code: `device_protocol::BLOCK_PROTO`
-
-        let args = [device_protocol::MAP_MMIO, node.id, 0, mmio_slot, 0, 0, 0, 0];
-
-        // We'll mimic the BLK serivce exactly for now assuming Unicorn handles device protocol messages broadly.
-        unicorn.call(tag, args).expect("Failed request MMIO cap");
-
+        let mmio_va = 0x6000_2000;
         VSPACE_CAP
             .map(
                 Frame::from(CapPtr::from(mmio_slot)),
@@ -83,9 +56,23 @@ impl DriverService for NetService {
             )
             .expect("Failed to map MMIO");
 
-        let mut net = unsafe { VirtIONet::new(mmio_va).expect("Failed to init virtio-net") };
-
+        let net = unsafe { VirtIONet::new(mmio_va).expect("Failed to init virtio-net") };
         self.net = Some(net);
+    }
+}
+
+impl NetDevice for NetService {
+    fn mac_address(&self) -> net_proto::MacAddress {
+        let octets = self.net.as_ref().map(|n| n.mac()).unwrap_or([0; 6]);
+        net_proto::MacAddress { octets }
+    }
+
+    fn send(&mut self, _buf: &[u8]) -> Result<(), Error> {
+        Ok(())
+    }
+
+    fn recv(&mut self, _buf: &mut [u8]) -> Result<usize, Error> {
+        Ok(0)
     }
 }
 
@@ -102,74 +89,54 @@ impl SystemService for NetService {
 
     fn run(&mut self) -> Result<(), Error> {
         self.running = true;
+        log!("Net Service running...");
         while self.running {
-            let badge_bits = self.endpoint.recv(self.reply.cap())?;
-            let badge = Badge::new(badge_bits);
-            let utcb = unsafe { UTCB::get() };
-            let tag = utcb.msg_tag;
-            let args = utcb.mrs_regs;
+            let mut utcb = unsafe { UTCB::new() };
+            utcb.clear();
+            utcb.set_reply_window(self.reply.cap());
+            utcb.set_recv_window(RECV_SLOT);
 
-            let res = self.dispatch(badge, tag.label(), tag.proto(), tag.flags(), args);
-            match res {
-                Ok(ret) => self.reply(0, 0, MsgFlags::OK, ret)?,
-                Err(e) => self.reply(0, 0, MsgFlags::ERROR, [e as usize; 8])?,
+            if self.endpoint.recv(&mut utcb).is_ok() {
+                if let Err(e) = self.dispatch(&mut utcb) {
+                    utcb.set_msg_tag(MsgTag::err());
+                    utcb.set_mr(0, e as usize);
+                }
+                let _ = self.reply(&mut utcb);
             }
         }
         Ok(())
     }
 
-    fn dispatch(
-        &mut self,
-        _badge: Badge,
-        label: usize,
-        proto: usize,
-        _flags: MsgFlags,
-        args: MsgArgs,
-    ) -> Result<MsgArgs, Error> {
-        let net = self.net.as_mut().ok_or(Error::NotInitialized)?;
-
-        if proto != device_protocol::NET_PROTO {
-            // Check label for GENERIC?
-            return Err(Error::InvalidProtocol);
-        }
-
-        match label {
-            net_proto::GET_MAC => {
-                let mac = net.mac();
-                // Return mac in registers. 6 bytes fit in args[0] (8 bytes) ?
-                // Or split.
-                // MacAddress struct is [u8; 6].
-                // We packaging it into u64?
-                // args[0] = mac[0..6]...
-                let mac_val =
-                    u64::from_le_bytes([mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], 0, 0]);
-                Ok([mac_val as usize, 0, 0, 0, 0, 0, 0, 0])
+    fn dispatch(&mut self, utcb: &mut UTCB) -> Result<(), Error> {
+        glenda::ipc_dispatch! {
+            self, utcb,
+            (device_protocol::NET_PROTO, net_proto::GET_MAC) => |s: &mut Self, u: &mut UTCB| {
+                handle_call(u, |u_inner| {
+                    let mac = s.mac_address();
+                    let mac_val = u64::from_le_bytes([mac.octets[0], mac.octets[1], mac.octets[2], mac.octets[3], mac.octets[4], mac.octets[5], 0, 0]);
+                    u_inner.set_mr(0, mac_val as usize);
+                    Ok(())
+                })
+            },
+            (device_protocol::NET_PROTO, net_proto::SEND) => |_s: &mut Self, u: &mut UTCB| {
+                handle_call(u, |_u_inner| {
+                    Ok(())
+                })
+            },
+            (device_protocol::NET_PROTO, net_proto::RECV) => |_s: &mut Self, u: &mut UTCB| {
+                handle_call(u, |_u_inner| {
+                    Ok(())
+                })
+            },
+            (root_protocol::PROCESS_PROTO, root_protocol::process::EXIT) => |s: &mut Self, _u: &mut UTCB| {
+                s.running = false;
+                Ok(())
             }
-            net_proto::SEND => {
-                // args[0] = len
-                // Payload in shared buf?
-                // Stub
-                Ok([0; 8])
-            }
-            net_proto::RECV => {
-                // Stub
-                Ok([0; 8])
-            }
-            _ => Err(Error::NotImplemented),
         }
     }
 
-    fn reply(
-        &mut self,
-        _label: usize,
-        _proto: usize,
-        flags: MsgFlags,
-        msg: MsgArgs,
-    ) -> Result<(), Error> {
-        let mut utcb = unsafe { UTCB::new() };
-        utcb.msg_tag = MsgTag::new(root_protocol::GENERIC_PROTO, msg.len(), flags);
-        utcb.mrs_regs = msg;
-        self.reply.reply(utcb.msg_tag, utcb.mrs_regs)
+    fn reply(&mut self, utcb: &mut UTCB) -> Result<(), Error> {
+        self.reply.reply(utcb)
     }
 
     fn stop(&mut self) {

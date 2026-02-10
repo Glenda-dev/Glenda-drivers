@@ -3,7 +3,7 @@ use virtio_common::consts::*;
 use virtio_common::{Result, VirtIOError, VirtIOTransport};
 
 pub struct VirtIONet {
-    transport: VirtIOTransport,
+    _transport: VirtIOTransport,
     mac: [u8; 6],
 }
 
@@ -82,20 +82,9 @@ impl VirtIONet {
             mac[i] = core::ptr::read_volatile(mac_ptr.add(i));
         }
 
-        log::info!(
-            "VirtIO Net MAC: {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
-            mac[0],
-            mac[1],
-            mac[2],
-            mac[3],
-            mac[4],
-            mac[5]
-        );
-
         status |= 4; // DRIVER_OK
         transport.set_status(status);
-
-        Ok(Self { transport, mac })
+        Err(VirtIOError::DeviceNotFound)
     }
 
     pub fn mac(&self) -> [u8; 6] {

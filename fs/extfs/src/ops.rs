@@ -1,6 +1,5 @@
 use crate::block::BlockReader;
 use crate::defs::ext4::*;
-use alloc::vec::Vec;
 use glenda::error::Error;
 
 pub trait ExtOps: Send + Sync {

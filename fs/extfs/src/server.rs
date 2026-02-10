@@ -1,15 +1,13 @@
-use alloc::vec::Vec;
-use core::slice;
-use log::{debug, error};
-
+use crate::fs::ExtFs;
 use glenda::cap::{CapPtr, Endpoint, Reply};
 use glenda::error::Error;
-use glenda::interface::fs::{FileHandleService, FileSystemService};
+use glenda::interface::fs::FileSystemService;
 use glenda::interface::system::SystemService;
-use glenda::ipc::{Badge, MsgArgs, MsgFlags, MsgTag, UTCB};
-use glenda::protocol::fs::{self as fs_proto, DEntry, OpenFlags, Stat};
-
-use crate::fs::ExtFs;
+use glenda::ipc::server::handle_call;
+use glenda::ipc::{MsgTag, UTCB};
+use glenda::protocol::fs::OpenFlags;
+use glenda::protocol::process;
+use glenda::protocol::{FS_PROTO, PROCESS_PROTO};
 
 pub struct Ext4Service {
     fs: Option<ExtFs>,
@@ -17,6 +15,8 @@ pub struct Ext4Service {
     reply: Reply,
     running: bool,
 }
+
+const RECV_SLOT: CapPtr = CapPtr::from(0x100);
 
 impl Ext4Service {
     pub fn new() -> Self {
@@ -47,69 +47,63 @@ impl SystemService for Ext4Service {
     fn run(&mut self) -> Result<(), Error> {
         self.running = true;
         while self.running {
-            let badge_bits = self.endpoint.recv(self.reply.cap())?;
-            let badge = Badge::new(badge_bits);
-            let utcb = unsafe { UTCB::get() };
-            let tag = utcb.msg_tag;
-            let args = utcb.mrs_regs;
+            let mut utcb = unsafe { UTCB::new() };
+            utcb.clear();
+            utcb.set_reply_window(self.reply.cap());
+            utcb.set_recv_window(RECV_SLOT);
 
-            let res = self.dispatch(badge, tag.label(), tag.proto(), tag.flags(), args);
-            match res {
-                Ok(ret) => self.reply(0, 0, MsgFlags::OK, ret)?,
-                Err(e) => self.reply(0, 0, MsgFlags::ERROR, [e as usize; 8])?,
+            if self.endpoint.recv(&mut utcb).is_ok() {
+                if let Err(e) = self.dispatch(&mut utcb) {
+                    utcb.set_msg_tag(MsgTag::err());
+                    utcb.set_mr(0, e as usize);
+                }
+                let _ = self.reply(&mut utcb);
             }
         }
         Ok(())
     }
 
-    fn dispatch(
-        &mut self,
-        _badge: Badge,
-        label: usize,
-        proto: usize,
-        _flags: MsgFlags,
-        args: MsgArgs,
-    ) -> Result<MsgArgs, Error> {
-        let fs = self.fs.as_mut().ok_or(Error::NotInitialized)?;
+    fn dispatch(&mut self, utcb: &mut UTCB) -> Result<(), Error> {
+        glenda::ipc_dispatch! {
+            self, utcb,
+            (FS_PROTO, glenda::protocol::fs::OPEN) => |s: &mut Self, u: &mut UTCB| {
+                handle_call(u, |u_inner| {
+                    let fs = s.fs.as_mut().ok_or(Error::NotInitialized)?;
+                    let flags = OpenFlags::from_bits_truncate(u_inner.get_mr(0));
+                    let mode = u_inner.get_mr(1) as u32;
+                    let path = "mock_path"; // TODO: read path from IPC buffer
 
-        if proto != fs_proto::PROTOCOL_ID {
-            return Err(Error::InvalidProtocol);
-        }
-
-        match label {
-            fs_proto::OPEN => {
-                let flags = OpenFlags::from_bits_truncate(args[0]);
-                let mode = args[1] as u32;
-                let path = "mock_path";
-
-                let cap = fs.open(path, flags, mode)?;
-                Ok([cap, 0, 0, 0, 0, 0, 0, 0])
+                    let cap = fs.open(path, flags, mode)?;
+                    u_inner.set_mr(0, cap);
+                    Ok(())
+                })
+            },
+            (FS_PROTO, glenda::protocol::fs::MKDIR) => |s: &mut Self, u: &mut UTCB| {
+                handle_call(u, |u_inner| {
+                    let fs = s.fs.as_mut().ok_or(Error::NotInitialized)?;
+                    let mode = u_inner.get_mr(0) as u32;
+                    let path = "mock_path";
+                    fs.mkdir(path, mode)?;
+                    Ok(())
+                })
+            },
+            (FS_PROTO, glenda::protocol::fs::UNLINK) => |s: &mut Self, u: &mut UTCB| {
+                handle_call(u, |_u_inner| {
+                    let fs = s.fs.as_mut().ok_or(Error::NotInitialized)?;
+                    let path = "mock_path";
+                    fs.unlink(path)?;
+                    Ok(())
+                })
+            },
+            (PROCESS_PROTO, process::EXIT) => |s: &mut Self, _u: &mut UTCB| {
+                s.running = false;
+                Ok(())
             }
-            fs_proto::MKDIR => {
-                let mode = args[0] as u32;
-                let path = "mock_path";
-                fs.mkdir(path, mode)?;
-                Ok([0; 8])
-            }
-            fs_proto::UNLINK => {
-                let path = "mock_path";
-                fs.unlink(path)?;
-                Ok([0; 8])
-            }
-            // ...
-            _ => Err(Error::InvalidMethod),
         }
     }
 
-    fn reply(
-        &mut self,
-        label: usize,
-        proto: usize,
-        flags: MsgFlags,
-        msg: MsgArgs,
-    ) -> Result<(), Error> {
-        let tag = MsgTag::new(proto, label, flags);
-        self.reply.reply(tag, msg)
+    fn reply(&mut self, utcb: &mut UTCB) -> Result<(), Error> {
+        self.reply.reply(utcb)
     }
 
     fn stop(&mut self) {

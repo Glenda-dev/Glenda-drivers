@@ -1,7 +1,5 @@
 use crate::block::BlockReader;
-use crate::defs::*;
 use crate::ops::{FatOps, RootLocation};
-use alloc::vec::Vec;
 use glenda::error::Error;
 
 pub struct Fat16Ops {

@@ -1,5 +1,3 @@
-use core::mem::size_of;
-
 pub const SUPER_BLOCK_OFFSET: u64 = 1024;
 pub const EXT4_SUPER_MAGIC: u16 = 0xEF53;
 

@@ -1,12 +1,20 @@
 #![no_std]
 #![no_main]
+#![allow(dead_code)]
 
 extern crate alloc;
 
 use glenda::cap::{CapPtr, Endpoint};
-use glenda::interface::device::DriverService;
-use glenda::interface::system::SystemService;
-use glenda::manager::device::DeviceNode;
+use glenda::interface::DriverService;
+use glenda::interface::SystemService;
+use glenda::protocol::device::DeviceNode;
+
+#[macro_export]
+macro_rules! log {
+    ($($arg:tt)*) => ({
+        glenda::println!("VirtIO-Blk: {}", format_args!($($arg)*));
+    })
+}
 
 mod blk;
 mod server;

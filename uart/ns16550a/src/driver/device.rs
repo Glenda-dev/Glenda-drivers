@@ -1,7 +1,7 @@
 use super::UartService;
-use glenda::interface::device::UartDevice;
+use glenda::interface::drivers::UartDriver;
 
-impl<'a> UartDevice for UartService<'a> {
+impl<'a> UartDriver for UartService<'a> {
     fn put_char(&mut self, c: u8) {
         if let Some(uart) = self.uart.as_mut() {
             uart.put_char(c);

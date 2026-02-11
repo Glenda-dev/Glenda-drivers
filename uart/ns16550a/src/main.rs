@@ -8,15 +8,16 @@ mod layout;
 mod ns16550a;
 
 use crate::layout::{DEVICE_CAP, DEVICE_SLOT};
-use driver::UartService;
 use glenda::cap::CapType;
 use glenda::cap::{ENDPOINT_CAP, ENDPOINT_SLOT, MONITOR_CAP, RECV_SLOT, REPLY_SLOT};
-use glenda::client::device::DeviceClient;
-use glenda::client::ResourceClient;
+use glenda::client::{DeviceClient, ResourceClient};
 use glenda::interface::{ResourceService, SystemService};
 use glenda::ipc::Badge;
 use glenda::protocol::resource::ResourceType;
 use glenda::protocol::resource::DEVICE_ENDPOINT;
+
+pub use driver::UartService;
+pub use ns16550a::Ns16550a;
 
 #[macro_export]
 macro_rules! log {
@@ -27,7 +28,7 @@ macro_rules! log {
 
 #[no_mangle]
 fn main() -> usize {
-    log!("NS16550A Driver starting...");
+    log!("Starting...");
     let mut res_client = ResourceClient::new(MONITOR_CAP);
     res_client
         .get_cap(Badge::null(), ResourceType::Endpoint, DEVICE_ENDPOINT, DEVICE_SLOT)

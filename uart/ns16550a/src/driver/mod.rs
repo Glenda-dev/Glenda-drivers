@@ -2,11 +2,9 @@ mod device;
 mod driver;
 mod server;
 
+use crate::Ns16550a;
 use glenda::cap::{CapPtr, Endpoint, Reply};
-use glenda::client::device::DeviceClient;
-use glenda::client::ResourceClient;
-
-pub use crate::ns16550a::Ns16550a;
+use glenda::client::{DeviceClient, ResourceClient};
 
 pub struct UartService<'a> {
     uart: Option<Ns16550a>,

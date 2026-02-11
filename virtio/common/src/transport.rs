@@ -1,5 +1,6 @@
 use super::consts::*;
 use super::{Result, VirtIOError};
+use crate::queue::VirtQueue;
 use core::ptr::NonNull;
 
 pub struct VirtIOTransport {
@@ -131,7 +132,26 @@ impl VirtIOTransport {
         self.write_reg(OFF_QUEUE_READY, ready);
     }
 
+    pub unsafe fn setup_queue(&self, vq: &VirtQueue) {
+        self.write_queue_sel(vq.index);
+        self.write_queue_num(vq.num as u32);
+        self.write_queue_desc(vq.paddr);
+
+        let avail_offset = 16 * vq.num as u64;
+        self.write_queue_driver(vq.paddr + avail_offset);
+
+        // Used ring is aligned to 4 bytes
+        let used_offset = (16 * vq.num as u64 + 6 + 2 * vq.num as u64 + 3) & !3;
+        self.write_queue_device(vq.paddr + used_offset);
+
+        self.write_queue_ready(1);
+    }
+
     pub unsafe fn config_ptr(&self) -> *mut u8 {
         self.base.as_ptr().add(OFF_CONFIG)
+    }
+
+    pub fn notify_queue(&self, idx: u32) {
+        unsafe { self.write_reg(OFF_QUEUE_NOTIFY, idx) }
     }
 }

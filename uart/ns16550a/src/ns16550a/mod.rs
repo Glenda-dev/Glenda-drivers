@@ -6,7 +6,7 @@ mod utf8;
 use config::*;
 use consts::*;
 use glenda::cap::IrqHandler;
-use glenda::interface::device::UartDevice;
+use glenda::interface::drivers::UartDriver;
 #[cfg(feature = "unicode")]
 use utf8::Utf8Decoder;
 
@@ -167,7 +167,7 @@ impl Ns16550a {
     }
 }
 
-impl UartDevice for Ns16550a {
+impl UartDriver for Ns16550a {
     fn put_char(&mut self, c: u8) {
         self.putchar(c);
     }

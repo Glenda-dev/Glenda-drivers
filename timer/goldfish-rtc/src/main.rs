@@ -6,7 +6,7 @@ extern crate alloc;
 use core::ptr::{read_volatile, write_volatile};
 use glenda::cap::{CapPtr, Endpoint, Frame, Reply};
 use glenda::cap::{ENDPOINT_CAP, ENDPOINT_SLOT, MONITOR_CAP, RECV_SLOT, REPLY_SLOT};
-use glenda::client::device::DeviceClient;
+use glenda::client::drivers::DeviceClient;
 use glenda::client::{init, ResourceClient};
 use glenda::error::Error;
 use glenda::interface::{
@@ -108,7 +108,7 @@ impl DriverService for RtcService {
     fn init(&mut self, node: DeviceNode) {
         let unicorn = Endpoint::from(CapPtr::from(11));
         let mmio_slot = 20;
-        let tag = MsgTag::new(protocol::device::TIMER_PROTO, 4, glenda::ipc::MsgFlags::HAS_CAP);
+        let tag = MsgTag::new(protocol::drivers::TIMER_PROTO, 4, glenda::ipc::MsgFlags::HAS_CAP);
         let args = [protocol::device::MAP_MMIO, node.id as usize, 0, mmio_slot, 0, 0, 0, 0];
 
         let mut utcb = unsafe { UTCB::new() };
@@ -171,21 +171,21 @@ impl SystemService for RtcService {
         let rtc = self.rtc.as_mut().ok_or(Error::NotInitialized)?;
 
         match tag.label() {
-            protocol::device::timer::GET_TIME => {
+            protocol::drivers::timer::GET_TIME => {
                 let time = rtc.get_time();
                 utcb.set_mr(0, (time & 0xFFFFFFFF) as usize);
                 utcb.set_mr(1, (time >> 32) as usize);
                 utcb.set_msg_tag(MsgTag::ok());
                 Ok(())
             }
-            protocol::device::timer::SET_ALARM => {
+            protocol::drivers::timer::SET_ALARM => {
                 let low = utcb.get_mr(0) as u64;
                 let high = utcb.get_mr(1) as u64;
                 rtc.set_alarm((high << 32) | low)?;
                 utcb.set_msg_tag(MsgTag::ok());
                 Ok(())
             }
-            protocol::device::timer::STOP_ALARM => {
+            protocol::drivers::timer::STOP_ALARM => {
                 rtc.stop_alarm()?;
                 utcb.set_msg_tag(MsgTag::ok());
                 Ok(())

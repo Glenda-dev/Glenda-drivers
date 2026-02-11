@@ -1,5 +1,3 @@
-use core::mem::size_of;
-
 #[repr(C, align(16))]
 #[derive(Debug, Clone, Copy)]
 pub struct Descriptor {
@@ -34,17 +32,107 @@ pub struct Used {
 }
 
 // Helper to calculate queue size
-pub fn queue_size_in_bytes(num: usize) -> usize {
-    let desc_size = size_of::<Descriptor>() * num;
-    let avail_size = size_of::<u16>() * (3 + num);
-    let used_size = size_of::<u16>() * 3 + size_of::<UsedElem>() * num;
-    // Alignment requirements...
-    // For simplicity, just return a safe upper bound or let the driver handle it.
-    // VirtIO 1.0:
-    // Descriptor Table: 16 * Queue Size
-    // Available Ring: 6 + 2 * Queue Size
-    // Used Ring: 6 + 8 * Queue Size
-    // Padding is needed.
-    // Let's assume the driver allocates 3 separate regions or one contiguous region with alignment.
-    desc_size + avail_size + used_size + 4096 // Padding
+pub fn queue_size_in_bytes(num: u16) -> usize {
+    let num = num as usize;
+    let desc_size = 16 * num;
+    let avail_size = 6 + 2 * num;
+    let used_size = 6 + 8 * num;
+
+    // Page align each section or just return total?
+    // VirtIO 1.0 allows separate addresses for each part.
+    desc_size + avail_size + used_size
+}
+
+pub struct VirtQueue {
+    pub index: u32,
+    pub num: u16,
+    pub paddr: u64,
+    pub vaddr: *mut u8,
+
+    pub last_used_idx: u16,
+    pub free_head: u16,
+    pub num_free: u16,
+}
+
+impl VirtQueue {
+    pub unsafe fn new(index: u32, num: u16, paddr: u64, vaddr: *mut u8) -> Self {
+        let v = Self { index, num, paddr, vaddr, last_used_idx: 0, free_head: 0, num_free: num };
+
+        // Initialize descriptor chain
+        let descs = v.desc_table();
+        for i in 0..num - 1 {
+            descs[i as usize].next = i + 1;
+            descs[i as usize].flags = DESC_F_NEXT;
+        }
+        descs[(num - 1) as usize].next = 0;
+        descs[(num - 1) as usize].flags = 0;
+
+        v
+    }
+
+    pub fn desc_table(&self) -> &mut [Descriptor] {
+        unsafe { core::slice::from_raw_parts_mut(self.vaddr as *mut Descriptor, self.num as usize) }
+    }
+
+    pub fn avail_ring(&self) -> &mut Available {
+        unsafe {
+            let offset = 16 * self.num as usize;
+            &mut *(self.vaddr.add(offset) as *mut Available)
+        }
+    }
+
+    pub fn used_ring(&self) -> &mut Used {
+        unsafe {
+            // Align to 4 bytes for Used ring features
+            let offset = (16 * self.num as usize + 6 + 2 * self.num as usize + 3) & !3;
+            &mut *(self.vaddr.add(offset) as *mut Used)
+        }
+    }
+
+    pub fn alloc_desc(&mut self) -> Option<u16> {
+        if self.num_free == 0 {
+            return None;
+        }
+        let id = self.free_head;
+        self.free_head = self.desc_table()[id as usize].next;
+        self.num_free -= 1;
+        Some(id)
+    }
+
+    pub fn free_desc(&mut self, id: u16) {
+        self.desc_table()[id as usize].next = self.free_head;
+        self.desc_table()[id as usize].flags = DESC_F_NEXT;
+        self.free_head = id;
+        self.num_free += 1;
+    }
+
+    pub fn submit(&mut self, head: u16) {
+        let avail = self.avail_ring();
+        let ring_idx = avail.idx as usize % self.num as usize;
+        unsafe {
+            let ring_ptr = self.vaddr.add(16 * self.num as usize + 4) as *mut u16;
+            ring_ptr.add(ring_idx).write_volatile(head);
+            core::sync::atomic::fence(core::sync::atomic::Ordering::SeqCst);
+            avail.idx = avail.idx.wrapping_add(1);
+        }
+    }
+
+    pub fn can_pop(&self) -> bool {
+        let used = self.used_ring();
+        self.last_used_idx != used.idx
+    }
+
+    pub fn pop(&mut self) -> Option<(u32, u32)> {
+        if !self.can_pop() {
+            return None;
+        }
+        let used = self.used_ring();
+        let ring_idx = self.last_used_idx as usize % self.num as usize;
+        let elem = unsafe {
+            let ring_ptr = (used as *const Used).add(1) as *const UsedElem;
+            ring_ptr.add(ring_idx).read_volatile()
+        };
+        self.last_used_idx = self.last_used_idx.wrapping_add(1);
+        Some((elem.id, elem.len))
+    }
 }

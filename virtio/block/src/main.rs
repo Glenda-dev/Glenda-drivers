@@ -4,42 +4,46 @@
 
 extern crate alloc;
 
-use glenda::cap::{CapPtr, Endpoint};
-use glenda::interface::DriverService;
-use glenda::interface::SystemService;
-use glenda::protocol::device::DeviceNode;
-
 #[macro_export]
 macro_rules! log {
     ($($arg:tt)*) => ({
-        glenda::println!("VirtIO-Blk: {}", format_args!($($arg)*));
+        glenda::println!("{}VirtIO-Blk: {}{}", glenda::console::ANSI_BLUE,format_args!($($arg)*),glenda::console::ANSI_RESET);
     })
 }
 
 mod blk;
+mod driver;
+mod layout;
 mod server;
+
+use crate::layout::{DEVICE_CAP, DEVICE_SLOT};
+use glenda::cap::CapType;
+use glenda::cap::{ENDPOINT_CAP, ENDPOINT_SLOT, MONITOR_CAP, RECV_SLOT, REPLY_SLOT};
+use glenda::client::{DeviceClient, ResourceClient};
+use glenda::interface::{ResourceService, SystemService};
+use glenda::ipc::Badge;
+use glenda::protocol::resource::{ResourceType, DEVICE_ENDPOINT};
+
 pub use blk::VirtIOBlk;
 pub use server::BlockService;
 
 #[no_mangle]
 fn main() -> usize {
-    let mut service = BlockService::new();
+    log!("VirtIO-Blk Driver starting...");
+    let mut res_client = ResourceClient::new(MONITOR_CAP);
+    res_client
+        .get_cap(Badge::null(), ResourceType::Endpoint, DEVICE_ENDPOINT, DEVICE_SLOT)
+        .expect("Failed to get device endpoint cap");
+    let mut dev_client = DeviceClient::new(DEVICE_CAP);
 
-    // Standard service layout
-    service.listen(Endpoint::from(CapPtr::from(12)), CapPtr::from(1)).unwrap();
+    res_client
+        .alloc(Badge::null(), CapType::Endpoint, 0, ENDPOINT_SLOT)
+        .expect("Failed to allocate endpoint cap for service");
 
-    // Initial discovery
-    let node = DeviceNode {
-        id: 1,
-        compatible: alloc::string::String::from("virtio,mmio"),
-        base_addr: 0x10001000,
-        size: 0x1000,
-        irq: 1,
-        kind: glenda::utils::platform::DeviceKind::Virtio,
-        parent_id: None,
-        children: alloc::vec::Vec::new(),
-    };
-    DriverService::init(&mut service, node);
+    let mut service = BlockService::new(&mut dev_client, &mut res_client);
+    service.listen(ENDPOINT_CAP, REPLY_SLOT, RECV_SLOT).expect("Failed to listen");
+
+    SystemService::init(&mut service).expect("Failed to init block service");
 
     service.run().expect("Block service crashed");
     0

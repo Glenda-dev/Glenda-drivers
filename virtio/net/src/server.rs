@@ -8,7 +8,7 @@ use glenda::ipc::{MsgFlags, MsgTag, UTCB};
 use glenda::mem::Perms;
 use glenda::protocol as root_protocol;
 use glenda::protocol::device as device_protocol;
-use glenda::protocol::device::net as net_proto;
+use glenda::protocol::drivers::net as net_proto;
 use glenda::protocol::device::DeviceNode;
 
 pub struct NetService {

@@ -1,43 +1,17 @@
-use crate::driver::UartService;
-use crate::layout::{IRQ_CAP, IRQ_SLOT, MMIO_SLOT, MMIO_VA};
 use crate::log;
-use crate::ns16550a::Ns16550a;
+use crate::UartService;
 use glenda::cap::RECV_SLOT;
 use glenda::cap::{CapPtr, Endpoint, Reply};
 use glenda::error::Error;
-use glenda::interface::{DeviceService, MemoryService, SystemService, UartDevice};
+use glenda::interface::drivers::UartDriver;
+use glenda::interface::{DriverService, SystemService};
 use glenda::ipc::server::handle_call;
-use glenda::ipc::{Badge, MsgTag, UTCB};
+use glenda::ipc::{MsgTag, UTCB};
 use glenda::protocol;
 
 impl<'a> SystemService for UartService<'a> {
     fn init(&mut self) -> Result<(), Error> {
-        log!("Driver init...");
-        let utcb = unsafe { UTCB::new() };
-
-        // 1. Get MMIO Cap
-        utcb.set_recv_window(MMIO_SLOT);
-        let mmio = self.dev.get_mmio(Badge::null())?;
-
-        // 2. Map MMIO
-        self.res.mmap(Badge::null(), mmio, MMIO_VA, 0x1000)?;
-        // 3. Get IRQ Cap
-        utcb.set_recv_window(IRQ_SLOT);
-        let irq_handler = self.dev.get_irq(Badge::null())?;
-        // 4. Configure Interrupt
-        // We use our endpoint to receive interrupts.
-        // Note: Ideally we should use a badged endpoint to distinguish IRQ from IPC.
-        // But for now we assume direct notification.
-        irq_handler.set_notification(self.endpoint)?;
-        irq_handler.set_priority(1)?;
-
-        // 5. Init Hardware
-        // IRQ is enabled by `init_hw`.
-        let uart = Ns16550a::new(MMIO_VA, IRQ_CAP);
-        uart.init_hw();
-        self.uart = Some(uart);
-        log!("Driver initialized!");
-        Ok(())
+        DriverService::init(self)
     }
 
     fn listen(&mut self, ep: Endpoint, reply: CapPtr, recv: CapPtr) -> Result<(), Error> {
@@ -94,13 +68,13 @@ impl<'a> SystemService for UartService<'a> {
 
         glenda::ipc_dispatch! {
             self, utcb,
-            (protocol::device::UART_PROTO, protocol::device::uart::PUT_CHAR) => |s: &mut Self, u: &mut UTCB| {
+            (protocol::drivers::UART_PROTO, protocol::drivers::uart::PUT_CHAR) => |s: &mut Self, u: &mut UTCB| {
                 handle_call(u, |u| {
                     s.put_char(u.get_mr(0) as u8);
                     Ok(())
                 })
             },
-            (protocol::device::UART_PROTO, protocol::device::uart::GET_CHAR) => |s: &mut Self, u: &mut UTCB| {
+            (protocol::drivers::UART_PROTO, protocol::drivers::uart::GET_CHAR) => |s: &mut Self, u: &mut UTCB| {
                 handle_call(u, |_u| {
                     let c = s.get_char().ok_or(Error::NotFound)?;
                     Ok(c as usize)

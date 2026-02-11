@@ -3,50 +3,42 @@
 #![allow(dead_code)]
 
 extern crate alloc;
-use glenda::cap::{CapPtr, Endpoint};
-use glenda::interface::DriverService;
-use glenda::interface::SystemService;
-use glenda::protocol::device::DeviceNode;
+mod driver;
+mod layout;
+mod ns16550a;
+
+use crate::layout::{DEVICE_CAP, DEVICE_SLOT};
+use driver::UartService;
+use glenda::cap::CapType;
+use glenda::cap::{ENDPOINT_CAP, ENDPOINT_SLOT, MONITOR_CAP, RECV_SLOT, REPLY_SLOT};
+use glenda::client::device::DeviceClient;
+use glenda::client::ResourceClient;
+use glenda::interface::{ResourceService, SystemService};
+use glenda::ipc::Badge;
+use glenda::protocol::resource::ResourceType;
+use glenda::protocol::resource::DEVICE_ENDPOINT;
 
 #[macro_export]
 macro_rules! log {
     ($($arg:tt)*) => ({
-        glenda::println!("NS16550A: {}", format_args!($($arg)*));
+        glenda::println!("{}NS16550A: {}{}", glenda::console::ANSI_BLUE,format_args!($($arg)*),glenda::console::ANSI_RESET);
     })
 }
-mod ns16550a;
-mod server;
-#[cfg(feature = "unicode")]
-mod utf8;
-
-pub use ns16550a::Ns16550a;
-pub use server::UartService;
-#[cfg(feature = "unicode")]
-pub use utf8::Utf8Decoder;
 
 #[no_mangle]
 fn main() -> usize {
     log!("NS16550A Driver starting...");
-
-    let mut service = UartService::new();
-
-    // Setup initial caps (standard for services)
-    service.listen(Endpoint::from(CapPtr::from(12)), CapPtr::from(1)).unwrap();
-
-    // Discovery (Self-init for now as we don't have a manager calling us yet)
-    // In a real system, Unicorn would call init() via IPC.
-    let node = DeviceNode {
-        id: 0,
-        compatible: alloc::string::String::from("ns16550a"),
-        base_addr: 0x10000000,
-        size: 0x1000,
-        irq: 10,
-        kind: glenda::utils::platform::DeviceKind::Uart,
-        parent_id: None,
-        children: alloc::vec::Vec::new(),
-    };
-    DriverService::init(&mut service, node);
-
-    service.run().unwrap();
+    let mut res_client = ResourceClient::new(MONITOR_CAP);
+    res_client
+        .get_cap(Badge::null(), ResourceType::Endpoint, DEVICE_ENDPOINT, DEVICE_SLOT)
+        .expect("Failed to get device endpoint cap");
+    let mut dev_client = DeviceClient::new(DEVICE_CAP);
+    res_client
+        .alloc(Badge::null(), CapType::Endpoint, 0, ENDPOINT_SLOT)
+        .expect("Failed to allocate endpoint cap for service");
+    let mut service = UartService::new(&mut dev_client, &mut res_client);
+    service.listen(ENDPOINT_CAP, REPLY_SLOT, RECV_SLOT).expect("Failed to listen");
+    SystemService::init(&mut service).expect("Failed to init service");
+    service.run().expect("UART driver exited");
     0
 }

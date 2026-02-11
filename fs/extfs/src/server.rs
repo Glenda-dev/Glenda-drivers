@@ -13,6 +13,7 @@ pub struct Ext4Service {
     fs: Option<ExtFs>,
     endpoint: Endpoint,
     reply: Reply,
+    recv: CapPtr,
     running: bool,
 }
 
@@ -24,6 +25,7 @@ impl Ext4Service {
             fs: None,
             endpoint: Endpoint::from(CapPtr::null()),
             reply: Reply::from(CapPtr::null()),
+            recv: CapPtr::null(),
             running: false,
         }
     }
@@ -38,9 +40,10 @@ impl SystemService for Ext4Service {
         Ok(())
     }
 
-    fn listen(&mut self, ep: Endpoint, reply: CapPtr) -> Result<(), Error> {
+    fn listen(&mut self, ep: Endpoint, reply: CapPtr, recv: CapPtr) -> Result<(), Error> {
         self.endpoint = ep;
         self.reply = Reply::from(reply);
+        self.recv = recv;
         Ok(())
     }
 

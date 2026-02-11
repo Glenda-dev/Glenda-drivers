@@ -13,6 +13,7 @@ pub struct FatFsService {
     fs: Option<FatFs>,
     endpoint: Endpoint,
     reply: Reply,
+    recv: CapPtr,
     running: bool,
 }
 
@@ -24,6 +25,7 @@ impl FatFsService {
             fs: None,
             endpoint: Endpoint::from(CapPtr::null()),
             reply: Reply::from(CapPtr::null()),
+            recv: CapPtr::null(),
             running: false,
         }
     }
@@ -39,9 +41,10 @@ impl SystemService for FatFsService {
         Ok(())
     }
 
-    fn listen(&mut self, ep: Endpoint, reply: CapPtr) -> Result<(), Error> {
+    fn listen(&mut self, ep: Endpoint, reply: CapPtr, recv: CapPtr) -> Result<(), Error> {
         self.endpoint = ep;
         self.reply = Reply::from(reply);
+        self.recv = recv;
         Ok(())
     }
 

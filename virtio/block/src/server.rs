@@ -1,21 +1,22 @@
 use crate::VirtIOBlk;
 use core::ptr::NonNull;
-use glenda::cap::{CapPtr, Endpoint, Frame, Reply, VSPACE_CAP, RECV_SLOT};
+use glenda::cap::{CapPtr, Endpoint, Frame, Reply, RECV_SLOT, VSPACE_CAP};
 use glenda::error::Error;
 use glenda::interface::device::BlockDevice;
 use glenda::interface::{DriverService, SystemService};
 use glenda::ipc::server::handle_call;
 use glenda::ipc::{MsgFlags, MsgTag, UTCB};
-use glenda::protocol::device::DeviceNode;
 use glenda::mem::Perms;
 use glenda::protocol as root_protocol;
 use glenda::protocol::device as device_protocol;
 use glenda::protocol::device::block::*;
+use glenda::protocol::device::DeviceNode;
 
 pub struct BlockService {
     blk: Option<VirtIOBlk>,
     endpoint: Endpoint,
     reply: Reply,
+    recv: CapPtr,
     running: bool,
 }
 
@@ -25,6 +26,7 @@ impl BlockService {
             blk: None,
             endpoint: Endpoint::from(CapPtr::null()),
             reply: Reply::from(CapPtr::null()),
+            recv: CapPtr::null(),
             running: false,
         }
     }
@@ -36,14 +38,15 @@ impl DriverService for BlockService {
         let unicorn = Endpoint::from(CapPtr::from(11));
         let mmio_slot = 20;
 
-        let tag = MsgTag::new(device_protocol::BLOCK_PROTO, device_protocol::MAP_MMIO, MsgFlags::HAS_CAP);
+        let tag =
+            MsgTag::new(device_protocol::BLOCK_PROTO, device_protocol::MAP_MMIO, MsgFlags::HAS_CAP);
         let mut utcb = unsafe { UTCB::new() };
         utcb.clear();
         utcb.set_msg_tag(tag);
         utcb.set_mr(0, node.id);
         utcb.set_mr(1, 0);
         utcb.set_mr(2, mmio_slot);
-        
+
         unicorn.call(&mut utcb).expect("Failed to call unicorn");
 
         let mmio_va = 0x6000_0000;
@@ -75,17 +78,11 @@ impl BlockDevice for BlockService {
     }
 
     fn read_blocks(&mut self, sector: u64, buf: &mut [u8]) -> Result<usize, Error> {
-        self.blk
-            .as_mut()
-            .ok_or(Error::NotInitialized)?
-            .read_blocks(sector, buf)
+        self.blk.as_mut().ok_or(Error::NotInitialized)?.read_blocks(sector, buf)
     }
 
     fn write_blocks(&mut self, sector: u64, buf: &[u8]) -> Result<usize, Error> {
-        self.blk
-            .as_mut()
-            .ok_or(Error::NotInitialized)?
-            .write_blocks(sector, buf)
+        self.blk.as_mut().ok_or(Error::NotInitialized)?.write_blocks(sector, buf)
     }
 
     fn sync(&mut self) -> Result<(), Error> {
@@ -98,9 +95,10 @@ impl SystemService for BlockService {
         Ok(())
     }
 
-    fn listen(&mut self, ep: Endpoint, reply: CapPtr) -> Result<(), Error> {
+    fn listen(&mut self, ep: Endpoint, reply: CapPtr, recv: CapPtr) -> Result<(), Error> {
         self.endpoint = ep;
         self.reply = Reply::from(reply);
+        self.recv = recv;
         Ok(())
     }
 
@@ -111,7 +109,7 @@ impl SystemService for BlockService {
             let mut utcb = unsafe { UTCB::new() };
             utcb.clear();
             utcb.set_reply_window(self.reply.cap());
-            utcb.set_recv_window(RECV_SLOT);
+            utcb.set_recv_window(self.recv);
 
             if self.endpoint.recv(&mut utcb).is_ok() {
                 if let Err(e) = self.dispatch(&mut utcb) {
@@ -164,4 +162,3 @@ impl SystemService for BlockService {
         self.running = false;
     }
 }
-

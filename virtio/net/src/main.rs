@@ -32,7 +32,7 @@ fn main() -> usize {
     // Check if we can just rely on standard init if SystemService trait covers it?
     // SystemService has `listen`.
     // We manually call listen for now.
-    service.listen(Endpoint::from(CapPtr::from(12)), CapPtr::from(1)).unwrap();
+    service.listen(Endpoint::from(CapPtr::from(12)), glenda::cap::REPLY_SLOT).unwrap();
 
     // Initial discovery (Mocking the node info passed by system manager)
     let node = DeviceNode {

@@ -1,4 +1,4 @@
-use spin::Mutex;
+use glenda::sync::mutex::Mutex;
 
 const LINEBUF_CAP: usize = 256;
 

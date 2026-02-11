@@ -1,21 +1,14 @@
+mod config;
+mod consts;
 #[cfg(feature = "unicode")]
-use crate::utf8;
-#[cfg(feature = "unicode")]
-use crate::Utf8Decoder;
+mod utf8;
+
+use config::*;
+use consts::*;
 use glenda::cap::IrqHandler;
 use glenda::interface::device::UartDevice;
-
-// Registers
-const RBR: usize = 0;
-const THR: usize = 0;
-const IER: usize = 1;
-const IIR: usize = 2;
-const FCR: usize = 2;
-const LCR: usize = 3;
-const MCR: usize = 4;
-const LSR: usize = 5;
-const MSR: usize = 6;
-const SCR: usize = 7;
+#[cfg(feature = "unicode")]
+use utf8::Utf8Decoder;
 
 pub struct Ns16550a {
     pub base: usize,
@@ -45,22 +38,36 @@ impl Ns16550a {
     }
 
     pub fn init_hw(&self) {
+        let divisor = calculate_divisor(DEFAULT_BAUD_RATE);
         unsafe {
-            self.write(IER, 0x00); // Disable interrupts
-            self.write(LCR, 0x80); // Enable DLAB
-            self.write(0, 0x03); // Divisor low (38.4K)
-            self.write(1, 0x00); // Divisor high
-            self.write(LCR, 0x03); // 8 bits, no parity, one stop bit
-            self.write(FCR, 0x07); // Enable FIFO, clear them
-            self.write(MCR, 0x0B); // IRQs enabled, RTS/DSR set
-            self.write(IER, 0x01); // Enable RX interrupt
+            // Disable interrupts during init
+            self.write(IER, 0x00);
+
+            // Enable DLAB to set baud rate
+            self.write(LCR, LCR_DLAB);
+
+            // Set divisor
+            self.write(DLL, (divisor & 0xFF) as u8);
+            self.write(DLM, (divisor >> 8) as u8);
+
+            // 8 bits, no parity, one stop bit (8N1), disable DLAB
+            self.write(LCR, LCR_DATA_BITS_8 | LCR_STOP_BITS_1 | LCR_PARITY_NONE);
+
+            // Enable FIFO, clear them, with 14-byte threshold
+            self.write(FCR, FCR_FIFO_ENABLE | FCR_FIFO_RX_RESET | FCR_FIFO_TX_RESET);
+
+            // IRQs enabled, RTS/DTR set
+            self.write(MCR, MCR_OUT2 | MCR_RTS | MCR_DTR);
+
+            // Enable RX interrupt
+            self.write(IER, IER_RX_ENABLE);
         }
     }
 
     pub fn handle_irq(&mut self) -> Option<u8> {
         unsafe {
             let iir = self.read(IIR);
-            if iir & 0x01 == 0 {
+            if iir & IIR_NO_INTERRUPT == 0 {
                 // Interrupt pending
                 return self.getchar();
             }
@@ -144,7 +151,7 @@ impl Ns16550a {
 
     fn getchar(&self) -> Option<u8> {
         unsafe {
-            if self.read(LSR) & 0x01 != 0 {
+            if self.read(LSR) & LSR_DATA_READY != 0 {
                 Some(self.read(RBR))
             } else {
                 None
@@ -154,7 +161,7 @@ impl Ns16550a {
 
     fn putchar(&self, c: u8) {
         unsafe {
-            while self.read(LSR) & 0x20 == 0 {}
+            while self.read(LSR) & LSR_THR_EMPTY == 0 {}
             self.write(THR, c);
         }
     }

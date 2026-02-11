@@ -3,15 +3,27 @@
 #![allow(dead_code)]
 
 extern crate alloc;
-use glenda::cap::{CapPtr, Endpoint, Frame, Reply, RECV_SLOT, VSPACE_CAP};
+use core::ptr::{read_volatile, write_volatile};
+use glenda::cap::{CapPtr, Endpoint, Frame, Reply};
+use glenda::cap::{ENDPOINT_CAP, ENDPOINT_SLOT, MONITOR_CAP, RECV_SLOT, REPLY_SLOT};
+use glenda::client::device::DeviceClient;
+use glenda::client::{init, ResourceClient};
 use glenda::error::Error;
-use glenda::interface::{DriverService, SystemService, TimerDevice};
+use glenda::interface::{
+    DeviceService, DriverService, ResourceService, SystemService, TimerDevice,
+};
 use glenda::ipc::{MsgTag, UTCB};
 use glenda::mem::Perms;
 use glenda::protocol;
 use glenda::protocol::device::DeviceNode;
+use glenda::protocol::resource::{DEVICE_ENDPOINT, INIT_ENDPOINT};
 
-use core::ptr::{read_volatile, write_volatile};
+#[macro_export]
+macro_rules! log {
+    ($($arg:tt)*) => ({
+        glenda::println!("Goldfish-RTC: {}", format_args!($($arg)*));
+    })
+}
 
 const TIMER_TIME_LOW: usize = 0x00;
 const TIMER_TIME_HIGH: usize = 0x04;
@@ -73,16 +85,21 @@ pub struct RtcService {
     rtc: Option<GoldfishRtc>,
     endpoint: Endpoint,
     reply: Reply,
+    recv: CapPtr,
     running: bool,
+
+    device: &DeviceClient,
 }
 
 impl RtcService {
-    pub fn new() -> Self {
+    pub fn new(device: &DeviceClient) -> Self {
         Self {
             rtc: None,
             endpoint: Endpoint::from(CapPtr::null()),
             reply: Reply::from(CapPtr::null()),
+            recv: CapPtr::null(),
             running: false,
+            device,
         }
     }
 }
@@ -122,9 +139,10 @@ impl SystemService for RtcService {
         Ok(())
     }
 
-    fn listen(&mut self, ep: Endpoint, reply: CapPtr) -> Result<(), Error> {
+    fn listen(&mut self, ep: Endpoint, reply: CapPtr, recv: CapPtr) -> Result<(), Error> {
         self.endpoint = ep;
         self.reply = Reply::from(reply);
+        self.recv = recv;
         Ok(())
     }
 
@@ -187,9 +205,17 @@ impl SystemService for RtcService {
 
 #[unsafe(no_mangle)]
 fn main() -> usize {
-    let mut service = RtcService::new();
-    // Default service endpoint slot is conventionally 16 for spawned children
-    service.listen(Endpoint::from(CapPtr::from(16)), CapPtr::from(1)).unwrap();
+    let res_client = ResourceClient::new(MONITOR_CAP);
+    let dev_cap = CapPtr::null();
+    res_client
+        .get_cap(Badge::null(), ResourceType::Endpoint, DEVICE_ENDPOINT, dev_cap)
+        .expect("Failed to get device endpoint cap");
+    let dev_client = DeviceClient::new(Endpoint::from(dev_cap));
+    let mut service = RtcService::new(&dev_client);
+    res_client
+        .alloc(Badge::null(), ResourceType::Endpoint, 0, ENDPOINT_SLOT)
+        .expect("Failed to allocate endpoint cap for service");
+    service.listen(ENDPOINT_CAP, REPLY_SLOT);
 
     // Init from device node
     let node = DeviceNode {

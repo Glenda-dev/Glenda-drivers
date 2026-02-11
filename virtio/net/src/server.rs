@@ -15,6 +15,7 @@ pub struct NetService {
     net: Option<VirtIONet>,
     endpoint: Endpoint,
     reply: Reply,
+    recv: CapPtr,
     running: bool,
 }
 
@@ -24,6 +25,7 @@ impl NetService {
             net: None,
             endpoint: Endpoint::from(CapPtr::null()),
             reply: Reply::from(CapPtr::null()),
+            recv: CapPtr::null(),
             running: false,
         }
     }
@@ -81,9 +83,10 @@ impl SystemService for NetService {
         Ok(())
     }
 
-    fn listen(&mut self, ep: Endpoint, reply: CapPtr) -> Result<(), Error> {
+    fn listen(&mut self, ep: Endpoint, reply: CapPtr, recv: CapPtr) -> Result<(), Error> {
         self.endpoint = ep;
         self.reply = Reply::from(reply);
+        self.recv = recv;
         Ok(())
     }
 
@@ -94,7 +97,7 @@ impl SystemService for NetService {
             let mut utcb = unsafe { UTCB::new() };
             utcb.clear();
             utcb.set_reply_window(self.reply.cap());
-            utcb.set_recv_window(RECV_SLOT);
+            utcb.set_recv_window(self.recv);
 
             if self.endpoint.recv(&mut utcb).is_ok() {
                 if let Err(e) = self.dispatch(&mut utcb) {

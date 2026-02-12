@@ -131,16 +131,16 @@ impl BlockDriver for VirtIOBlk {
         descs[desc_id_status as usize].next = 0;
 
         vq.submit(desc_id_header);
-        glenda::println!("VirtIO-Blk: Notifying queue...");
+        log!("Notifying queue...");
         self.transport.notify_queue(vq.index);
 
         // Polling for completion
-        glenda::println!("VirtIO-Blk: Waiting for completion...");
+        log!("Waiting for completion...");
         while !vq.can_pop() {
             core::hint::spin_loop();
         }
 
-        glenda::println!("VirtIO-Blk: Popping from queue...");
+        log!("Popping from queue...");
         vq.pop();
 
         let status = unsafe { status_vaddr.read_volatile() };

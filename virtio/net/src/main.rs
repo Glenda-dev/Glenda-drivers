@@ -4,48 +4,46 @@
 
 extern crate alloc;
 
-use glenda::cap::{CapPtr, Endpoint};
-use glenda::interface::DriverService;
-use glenda::interface::SystemService;
-use glenda::protocol::device::DeviceNode;
+mod driver;
+mod layout;
+mod net;
+mod server;
+
+pub use net::VirtIONet;
+pub use server::NetService;
+
+use crate::layout::{DEVICE_CAP, DEVICE_SLOT};
+use glenda::cap::CapType;
+use glenda::cap::{ENDPOINT_CAP, ENDPOINT_SLOT, MONITOR_CAP, RECV_SLOT, REPLY_SLOT};
+use glenda::client::{DeviceClient, ResourceClient};
+use glenda::interface::{ResourceService, SystemService};
+use glenda::ipc::Badge;
+use glenda::protocol::resource::{ResourceType, DEVICE_ENDPOINT};
 
 #[macro_export]
 macro_rules! log {
     ($($arg:tt)*) => ({
-        glenda::println!("VirtIO-Net: {}", format_args!($($arg)*));
+        glenda::println!("{}VirtIO-Net: {}{}", glenda::console::ANSI_BLUE, format_args!($($arg)*), glenda::console::ANSI_RESET);
     })
 }
 
-mod net;
-mod server;
-pub use server::NetService;
-
 #[no_mangle]
 fn main() -> usize {
-    let mut service = NetService::new();
+    log!("Starting...");
+    let mut res_client = ResourceClient::new(MONITOR_CAP);
+    res_client
+        .get_cap(Badge::null(), ResourceType::Endpoint, DEVICE_ENDPOINT, DEVICE_SLOT)
+        .expect("Failed to get device endpoint cap");
+    let mut dev_client = DeviceClient::new(DEVICE_CAP);
 
-    // Standard service layout (similar to BLK)
-    // We assume we are started by Warren and given an endpoint to listen on.
-    // For now we hardcode similar to BLK example, or assume passed handles.
-    // BLK example: service.listen(Endpoint::from(CapPtr::from(12)), CapPtr::from(1)).unwrap();
+    res_client
+        .alloc(Badge::null(), CapType::Endpoint, 0, ENDPOINT_SLOT)
+        .expect("Failed to allocate endpoint cap for service");
 
-    // Check if we can just rely on standard init if SystemService trait covers it?
-    // SystemService has `listen`.
-    // We manually call listen for now.
-    service.listen(Endpoint::from(CapPtr::from(12)), glenda::cap::REPLY_SLOT).unwrap();
+    let mut service = NetService::new(&mut dev_client, &mut res_client);
+    service.listen(ENDPOINT_CAP, REPLY_SLOT, RECV_SLOT).expect("Failed to listen");
 
-    // Initial discovery (Mocking the node info passed by system manager)
-    let node = DeviceNode {
-        id: 2, // ID 2 for Net? BLK was 1 in example.
-        compatible: alloc::string::String::from("virtio,mmio"),
-        base_addr: 0x10002000, // Different from BLK
-        size: 0x1000,
-        irq: 2,
-        kind: glenda::utils::platform::DeviceKind::Virtio,
-        parent_id: None,
-        children: alloc::vec::Vec::new(),
-    };
-    DriverService::init(&mut service, node);
+    SystemService::init(&mut service).expect("Failed to init net service");
 
     service.run().expect("Net service crashed");
     0

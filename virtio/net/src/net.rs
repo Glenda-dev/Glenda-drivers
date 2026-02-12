@@ -1,3 +1,4 @@
+use crate::log;
 use core::ptr::NonNull;
 use virtio_common::consts::*;
 use virtio_common::{Result, VirtIOError, VirtIOTransport};
@@ -26,6 +27,7 @@ impl VirtIONet {
         let transport = VirtIOTransport::new(base)?;
 
         if transport.get_device_id() != DEV_ID_NET {
+            log!("Unmatched device ID: {:#x}", transport.get_device_id());
             return Err(VirtIOError::DeviceNotFound);
         }
 
@@ -33,58 +35,40 @@ impl VirtIONet {
         transport.set_status(0);
 
         // Acknowledge
-        let mut status = transport.get_status();
-        status |= 1; // ACKNOWLEDGE
-        transport.set_status(status);
+        transport.add_status(STATUS_ACKNOWLEDGE);
+        transport.add_status(STATUS_DRIVER);
 
-        status |= 2; // DRIVER
-        transport.set_status(status);
-
-        // Feature negotiation (todo: mac, etc)
-        // For now, accept what device offers (simple) or set basic ones.
-        // Let's assume we want MAC.
-        // VIRTIO_NET_F_MAC = 5 (1 << 5)
+        // Feature negotiation
         let device_features = transport.get_features();
-        let driver_features = device_features & (1 << 5);
-        transport.set_features(driver_features);
+        log!("Device features: {:#x}", device_features);
+        // Accept all features for now
+        transport.set_features(device_features);
 
-        status |= 8; // FEATURES_OK
-        transport.set_status(status);
-
+        transport.add_status(STATUS_FEATURES_OK);
         // Check if FEATURES_OK is still set
-        if (transport.get_status() & 8) == 0 {
-            return Err(VirtIOError::InvalidHeader); // Feature negotiation failed
+        if (transport.get_status() & STATUS_FEATURES_OK) == 0 {
+            log!("Feature negotiation failed, status: {:#x}", transport.get_status());
+            return Err(VirtIOError::InvalidHeader);
         }
 
-        // Initialize Queues (Stub)
-        // virtio-common does not currently provide VirtQueue struct logic.
-        // real implementation would init RX/TX queues here.
-        // for now we just proceed to DRIVER_OK.
-
         // Read MAC
-        // Only if VIRTIO_NET_F_MAC negotiated.
-        // Config space is after MMIO regs (0x100) usually ?
-        // Transport `read_config` needed?
-        // Let's assume generic transport exposes way to read config.
-        // Or implement specific config read here.
-        // Virtio 1.0 MMIO: config is at 0x100.
-        // Net config:
-        // struct virtio_net_config {
-        //   u8 mac[6];
-        //   u16 status;
-        //   u16 max_virtqueue_pairs;
-        //   u16 mtu;
-        // }
-        // Offset 0x100.
         let mac_ptr = transport.config_ptr();
         let mut mac = [0u8; 6];
         for i in 0..6 {
             mac[i] = core::ptr::read_volatile(mac_ptr.add(i));
         }
+        log!(
+            "MAC Address: {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
+            mac[0],
+            mac[1],
+            mac[2],
+            mac[3],
+            mac[4],
+            mac[5]
+        );
 
-        status |= 4; // DRIVER_OK
-        transport.set_status(status);
-        Err(VirtIOError::DeviceNotFound)
+        transport.add_status(STATUS_DRIVER_OK);
+        Ok(Self { _transport: transport, mac })
     }
 
     pub fn mac(&self) -> [u8; 6] {

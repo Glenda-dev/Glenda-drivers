@@ -37,7 +37,7 @@ impl DriverService for BlockService<'_> {
         blk.init_hardware().expect("Failed to init hardware");
 
         let cap = blk.capacity();
-        log!("VirtIO-Blk capacity: {} sectors ({} MB)", cap, (cap * 512) / (1024 * 1024));
+        log!("Capacity: {} sectors ({} MB)", cap, (cap * 512) / (1024 * 1024));
 
         // 6. Allocate DMA memory (1 page)
         let (paddr, frame) = self.res.dma_alloc(Badge::null(), 1, DMA_SLOT)?;

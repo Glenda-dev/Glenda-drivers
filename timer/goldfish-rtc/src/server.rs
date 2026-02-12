@@ -1,17 +1,17 @@
 use crate::log;
-use crate::net::VirtIONet;
+use crate::GoldfishRtc;
 use glenda::cap::{CapPtr, Endpoint, Reply};
-use glenda::client::{DeviceClient, ResourceClient};
+use glenda::client::DeviceClient;
+use glenda::client::ResourceClient;
 use glenda::error::Error;
-use glenda::interface::drivers::NetDriver;
+use glenda::interface::drivers::TimerDriver;
 use glenda::interface::{DriverService, SystemService};
 use glenda::ipc::{MsgTag, UTCB};
-use glenda::protocol::device::net::MacAddress;
-use glenda::protocol::drivers::net::{GET_MAC, RECV, SEND};
-use glenda::protocol::drivers::NET_PROTO;
+use glenda::protocol::drivers::timer::{GET_TIME, SET_ALARM, SET_TIME, STOP_ALARM};
+use glenda::protocol::drivers::TIMER_PROTO;
 
-pub struct NetService<'a> {
-    pub net: Option<VirtIONet>,
+pub struct RtcService<'a> {
+    pub rtc: Option<GoldfishRtc>,
     pub endpoint: Endpoint,
     pub reply: Reply,
     pub recv: CapPtr,
@@ -21,10 +21,10 @@ pub struct NetService<'a> {
     pub res: &'a mut ResourceClient,
 }
 
-impl<'a> NetService<'a> {
+impl<'a> RtcService<'a> {
     pub fn new(dev: &'a mut DeviceClient, res: &'a mut ResourceClient) -> Self {
         Self {
-            net: None,
+            rtc: None,
             endpoint: Endpoint::from(CapPtr::null()),
             reply: Reply::from(CapPtr::null()),
             recv: CapPtr::null(),
@@ -34,44 +34,65 @@ impl<'a> NetService<'a> {
         }
     }
 
-    fn on_get_mac(&mut self, utcb: &mut UTCB) -> Result<(), Error> {
-        let mac = self.mac_address();
-        for i in 0..6 {
-            utcb.set_mr(i, mac.octets[i] as usize);
+    fn on_get_time(&mut self, utcb: &mut UTCB) -> Result<(), Error> {
+        let time = self.get_time();
+        utcb.set_mr(0, time as usize);
+        utcb.set_msg_tag(MsgTag::ok());
+        Ok(())
+    }
+
+    fn on_set_time(&mut self, utcb: &mut UTCB) -> Result<(), Error> {
+        let timestamp = utcb.get_mr(0) as u64;
+        self.set_time(timestamp)?;
+        utcb.set_msg_tag(MsgTag::ok());
+        Ok(())
+    }
+
+    fn on_set_alarm(&mut self, utcb: &mut UTCB) -> Result<(), Error> {
+        let timestamp = utcb.get_mr(0) as u64;
+        self.set_alarm(timestamp)?;
+        utcb.set_msg_tag(MsgTag::ok());
+        Ok(())
+    }
+
+    fn on_stop_alarm(&mut self, _utcb: &mut UTCB) -> Result<(), Error> {
+        self.stop_alarm()?;
+        _utcb.set_msg_tag(MsgTag::ok());
+        Ok(())
+    }
+}
+
+impl<'a> TimerDriver for RtcService<'a> {
+    fn get_time(&self) -> u64 {
+        self.rtc.as_ref().map(|r| r.get_time()).unwrap_or(0)
+    }
+
+    fn set_time(&mut self, timestamp: u64) -> Result<(), Error> {
+        if let Some(rtc) = &mut self.rtc {
+            rtc.set_time(timestamp)
+        } else {
+            Err(Error::NotInitialized)
         }
-        utcb.set_msg_tag(MsgTag::ok());
-        Ok(())
     }
 
-    fn on_send(&mut self, utcb: &mut UTCB) -> Result<(), Error> {
-        // TODO: Implement send
-        utcb.set_msg_tag(MsgTag::ok());
-        Ok(())
+    fn set_alarm(&mut self, timestamp: u64) -> Result<(), Error> {
+        if let Some(rtc) = &mut self.rtc {
+            rtc.set_alarm(timestamp)
+        } else {
+            Err(Error::NotInitialized)
+        }
     }
 
-    fn on_recv(&mut self, utcb: &mut UTCB) -> Result<(), Error> {
-        // TODO: Implement recv
-        utcb.set_msg_tag(MsgTag::ok());
-        Ok(())
-    }
-}
-
-impl<'a> NetDriver for NetService<'a> {
-    fn mac_address(&self) -> MacAddress {
-        let octets = self.net.as_ref().map(|n| n.mac()).unwrap_or([0; 6]);
-        MacAddress { octets }
-    }
-
-    fn send(&mut self, _buf: &[u8]) -> Result<(), Error> {
-        Ok(())
-    }
-
-    fn recv(&mut self, _buf: &mut [u8]) -> Result<usize, Error> {
-        Ok(0)
+    fn stop_alarm(&mut self) -> Result<(), Error> {
+        if let Some(rtc) = &mut self.rtc {
+            rtc.stop_alarm()
+        } else {
+            Err(Error::NotInitialized)
+        }
     }
 }
 
-impl<'a> SystemService for NetService<'a> {
+impl<'a> SystemService for RtcService<'a> {
     fn init(&mut self) -> Result<(), Error> {
         DriverService::init(self)
     }
@@ -85,7 +106,7 @@ impl<'a> SystemService for NetService<'a> {
 
     fn run(&mut self) -> Result<(), Error> {
         self.running = true;
-        log!("Net Service running...");
+        log!("RTC Service running...");
         while self.running {
             let mut utcb = unsafe { UTCB::new() };
             utcb.clear();
@@ -106,9 +127,10 @@ impl<'a> SystemService for NetService<'a> {
     fn dispatch(&mut self, utcb: &mut UTCB) -> Result<(), Error> {
         glenda::ipc_dispatch! {
             self, utcb,
-            (NET_PROTO, GET_MAC) => Self::on_get_mac,
-            (NET_PROTO, SEND) => Self::on_send,
-            (NET_PROTO, RECV) => Self::on_recv,
+            (TIMER_PROTO, GET_TIME) => Self::on_get_time,
+            (TIMER_PROTO, SET_TIME) => Self::on_set_time,
+            (TIMER_PROTO, SET_ALARM) => Self::on_set_alarm,
+            (TIMER_PROTO, STOP_ALARM) => Self::on_stop_alarm,
         }
     }
 

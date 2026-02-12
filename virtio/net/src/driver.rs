@@ -8,7 +8,7 @@ use glenda::ipc::{Badge, UTCB};
 
 impl DriverService for NetService<'_> {
     fn init(&mut self) -> Result<(), Error> {
-        log!("Driver init (v2)...");
+        log!("Driver init ...");
         let utcb = unsafe { UTCB::new() };
 
         // 1. Get MMIO Cap
@@ -24,8 +24,6 @@ impl DriverService for NetService<'_> {
 
         // 4. Configure Interrupt
         IRQ_CAP.set_notification(self.endpoint)?;
-        IRQ_CAP.set_priority(1)?;
-        IRQ_CAP.ack()?;
 
         // 5. Init Hardware
         let net = unsafe {

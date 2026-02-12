@@ -23,11 +23,8 @@ impl DriverService for BlockService<'_> {
         // 3. Get IRQ Cap
         utcb.set_recv_window(IRQ_SLOT);
         let _ = self.dev.get_irq(Badge::null())?;
-
         // 4. Configure Interrupt
         IRQ_CAP.set_notification(self.endpoint)?;
-        IRQ_CAP.set_priority(1)?;
-        IRQ_CAP.ack()?;
 
         // 5. Init Hardware
         let mut blk = unsafe {

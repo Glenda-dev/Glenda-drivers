@@ -20,6 +20,7 @@ impl<'a> DriverService for UartService<'a> {
         // 3. Get IRQ Cap
         utcb.set_recv_window(IRQ_SLOT);
         let irq_handler = self.dev.get_irq(Badge::null())?;
+        log!("Setting notification to {:?}", self.endpoint);
         // 4. Configure Interrupt
         // We use our endpoint to receive interrupts.
         // Note: Ideally we should use a badged endpoint to distinguish IRQ from IPC.

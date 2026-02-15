@@ -3,6 +3,8 @@
 #![allow(dead_code)]
 
 extern crate alloc;
+use crate::layout::{DEVICE_CAP, DEVICE_SLOT, ENDPOINT_SLOT, MMIO_SLOT};
+use glenda::cap::Endpoint;
 use glenda::cap::MONITOR_CAP;
 use glenda::client::{DeviceClient, ResourceClient};
 use glenda::interface::drivers::BusDriver;
@@ -20,7 +22,6 @@ macro_rules! log {
 mod driver;
 mod layout;
 
-use crate::layout::{DEVICE_CAP, DEVICE_SLOT, ENDPOINT_SLOT, MMIO_SLOT};
 pub use driver::DtbDriver;
 
 #[unsafe(no_mangle)]
@@ -45,11 +46,8 @@ fn main() -> usize {
 
     let mut dev_client = DeviceClient::new(DEVICE_CAP);
 
-    let mut driver = DtbDriver::new(
-        glenda::cap::Endpoint::from(ENDPOINT_SLOT),
-        &mut dev_client,
-        &mut res_client,
-    );
+    let mut driver =
+        DtbDriver::new(Endpoint::from(ENDPOINT_SLOT), &mut dev_client, &mut res_client);
 
     log!("Probing...");
     match driver.probe() {

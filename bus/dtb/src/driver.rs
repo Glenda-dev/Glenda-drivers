@@ -1,17 +1,13 @@
-use glenda::arch::mem::PGSIZE;
-use glenda::cap::{CapPtr, Endpoint, Frame, Reply};
+use crate::layout::{DTB_FRAME_SLOT, MAP_VA};
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
+use glenda::cap::{CapPtr, Endpoint, Reply};
 use glenda::client::{DeviceClient, ResourceClient};
 use glenda::error::Error;
 use glenda::interface::drivers::BusDriver;
-use glenda::interface::{DriverService, MemoryService, ResourceService};
+use glenda::interface::{DeviceService, DriverService, MemoryService};
 use glenda::ipc::Badge;
 use glenda::protocol::device::{DeviceDesc, DeviceDescNode, MMIORegion};
-use glenda::utils::bootinfo::{BootInfo, PlatformType};
-
-use alloc::string::{String, ToString};
-use alloc::vec::Vec;
-
-use crate::layout::{BOOTINFO_FRAME_SLOT, BOOTINFO_VA, DTB_FRAME_SLOT, MAP_VA, MMIO_CAP};
 
 pub struct DtbDriver<'a> {
     pub endpoint: Endpoint,
@@ -87,29 +83,16 @@ impl<'a> DtbDriver<'a> {
 
 impl<'a> BusDriver for DtbDriver<'a> {
     fn probe(&mut self) -> Result<Vec<DeviceDescNode>, Error> {
-        // 1. Get BootInfo to find DTB address
-        let bootinfo_cap = self.res.get_cap(
-            Badge::null(),
-            glenda::protocol::resource::ResourceType::Bootinfo,
-            0,
-            BOOTINFO_FRAME_SLOT,
-        )?;
-        self.res.mmap(Badge::null(), Frame::from(bootinfo_cap), BOOTINFO_VA, PGSIZE)?;
+        // 1. Get DTB MMIO from Device Manager
+        let utcb = unsafe { glenda::ipc::UTCB::new() };
+        utcb.set_recv_window(DTB_FRAME_SLOT);
+        let (fdt_cap, fdt_addr, fdt_size) = self.dev.get_mmio(Badge::null(), 0)?;
+        log!("Got DTB MMIO: cap={:?}, addr={:#x}, size={:#x}", fdt_cap, fdt_addr, fdt_size);
 
-        let bootinfo = unsafe { &*(BOOTINFO_VA as *const BootInfo) };
-        let (fdt_addr, fdt_size) = if let PlatformType::DTB = bootinfo.platform_type {
-            (bootinfo.addr, bootinfo.size)
-        } else {
-            return Err(Error::NotFound);
-        };
+        let size = if fdt_size > 0 { fdt_size } else { 0x10000 };
 
         // 2. Map DTB
-        let size = if fdt_size > 0 { fdt_size } else { 0x10000 };
-        let pages = (size + PGSIZE - 1) / PGSIZE;
-        MMIO_CAP.get_frame(fdt_addr, pages, DTB_FRAME_SLOT)?;
-        let frame = Frame::from(DTB_FRAME_SLOT);
-
-        self.res.mmap(Badge::null(), frame, MAP_VA, size)?;
+        self.res.mmap(Badge::null(), fdt_cap, MAP_VA, size)?;
 
         // 3. Parse DTB
         let fdt_slice = unsafe { core::slice::from_raw_parts(MAP_VA as *const u8, size) };

@@ -94,7 +94,6 @@ pub fn parse_madt(madt: &Madt, devices: &mut Vec<DeviceDescNode>) {
                     for i in 0..36 {
                         write!(hex, "{:02x} ", *entry_ptr.add(i)).ok();
                     }
-                    log!("  PLIC Raw: {}", hex);
 
                     let plic = &*(entry_ptr as *const PlicEntry);
                     let base_addr = plic.base_addr;

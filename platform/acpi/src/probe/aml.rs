@@ -3,7 +3,7 @@ use alloc::boxed::Box;
 use alloc::string::ToString;
 use alloc::vec;
 use alloc::vec::Vec;
-use aml::{AmlContext, AmlName, AmlValue, DebugVerbosity};
+use aml::{AmlContext, AmlError, AmlName, AmlValue, DebugVerbosity};
 use glenda::protocol::device::{DeviceDesc, DeviceDescNode};
 
 pub fn parse(
@@ -42,7 +42,15 @@ pub fn parse(
             core::slice::from_raw_parts(mapping.virtual_start.as_ptr(), mapping.region_length)
         };
         if let Err(e) = aml_context.parse_table(table_bytes) {
-            error!("AML: Failed to parse SSDT: {:?}", e);
+            match e {
+                AmlError::ValueDoesNotExist(ref name) => {
+                    log!(
+                        "AML: Workaround: SSDT parse returned ValueDoesNotExist({}), continuing...",
+                        name.as_string()
+                    );
+                }
+                _ => error!("AML: Failed to parse SSDT: {:?}", e),
+            }
         }
     }
 

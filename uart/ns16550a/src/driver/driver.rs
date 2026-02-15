@@ -13,13 +13,13 @@ impl<'a> DriverService for UartService<'a> {
 
         // 1. Get MMIO Cap
         utcb.set_recv_window(MMIO_SLOT);
-        let mmio = self.dev.get_mmio(Badge::null())?;
-
+        let (mmio, pa, size) = self.dev.get_mmio(Badge::null(), 0)?;
+        log!("Got MMIO cap: addr={:#x}, size={:#x}", pa, size);
         // 2. Map MMIO
         self.res.mmap(Badge::null(), mmio, MMIO_VA, 0x1000)?;
         // 3. Get IRQ Cap
         utcb.set_recv_window(IRQ_SLOT);
-        let irq_handler = self.dev.get_irq(Badge::null())?;
+        let irq_handler = self.dev.get_irq(Badge::null(), 0)?;
         log!("Setting notification to {:?}", self.endpoint);
         // 4. Configure Interrupt
         // We use our endpoint to receive interrupts.

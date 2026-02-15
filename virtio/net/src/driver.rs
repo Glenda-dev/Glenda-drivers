@@ -13,14 +13,14 @@ impl DriverService for NetService<'_> {
 
         // 1. Get MMIO Cap
         utcb.set_recv_window(MMIO_SLOT);
-        let _ = self.dev.get_mmio(Badge::null())?;
+        let _ = self.dev.get_mmio(Badge::null(), 0)?;
 
         // 2. Map MMIO
         self.res.mmap(Badge::null(), MMIO_CAP, MMIO_VA, 0x1000)?;
 
         // 3. Get IRQ Cap
         utcb.set_recv_window(IRQ_SLOT);
-        let _ = self.dev.get_irq(Badge::null())?;
+        let _ = self.dev.get_irq(Badge::null(), 0)?;
 
         // 4. Configure Interrupt
         IRQ_CAP.set_notification(self.endpoint)?;

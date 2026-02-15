@@ -1,4 +1,4 @@
-use crate::layout::{DMA_SLOT, DMA_VA, IRQ_CAP, IRQ_SLOT, MMIO_CAP, MMIO_SLOT, MMIO_VA};
+use crate::layout::{DMA_SLOT, DMA_VA, IRQ_SLOT, MMIO_SLOT, MMIO_VA};
 use crate::BlockService;
 use crate::VirtIOBlk;
 use core::ptr::NonNull;
@@ -15,17 +15,18 @@ impl DriverService for BlockService<'_> {
 
         // 1. Get MMIO Cap
         utcb.set_recv_window(MMIO_SLOT);
-        let _ = self.dev.get_mmio(Badge::null())?;
+        let (mmio, pa, size) = self.dev.get_mmio(Badge::null(), 0)?;
+        log!("Got MMIO cap: addr={:#x}, size={:#x}", pa, size);
 
         // 2. Map MMIO
-        self.res.mmap(Badge::null(), MMIO_CAP, MMIO_VA, 0x1000)?;
+        self.res.mmap(Badge::null(), mmio, MMIO_VA, 0x1000)?;
 
         // 3. Get IRQ Cap
         utcb.set_recv_window(IRQ_SLOT);
-        let _ = self.dev.get_irq(Badge::null())?;
+        let irq_handler = self.dev.get_irq(Badge::null(), 0)?;
+        log!("Got IRQ cap: {:?}", irq_handler);
         // 4. Configure Interrupt
-        IRQ_CAP.set_notification(self.endpoint)?;
-
+        irq_handler.set_notification(self.endpoint)?;
         // 5. Init Hardware
         let mut blk = unsafe {
             VirtIOBlk::new(NonNull::new(MMIO_VA as *mut u8).unwrap())

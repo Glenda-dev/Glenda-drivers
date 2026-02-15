@@ -1,0 +1,8 @@
+[package]
+name = "acpi"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+libglenda-rs = { path = "../../../lib/libglenda-rs", features = ["rt-service"] }
+acpi = { version = "5.2.0", default-features = false }

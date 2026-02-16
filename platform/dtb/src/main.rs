@@ -75,6 +75,5 @@ fn main() -> usize {
         }
     }
 
-    log!("DTB Driver finished.");
-    0
+    loop {}
 }

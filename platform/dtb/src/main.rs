@@ -3,7 +3,7 @@
 #![allow(dead_code)]
 
 extern crate alloc;
-use crate::layout::{DEVICE_CAP, DEVICE_SLOT, ENDPOINT_SLOT, MMIO_SLOT};
+use crate::layout::{DEVICE_CAP, DEVICE_SLOT, ENDPOINT_SLOT};
 use glenda::cap::Endpoint;
 use glenda::cap::MONITOR_CAP;
 use glenda::client::{DeviceClient, ResourceClient};
@@ -16,6 +16,19 @@ use glenda::protocol::resource::{ResourceType, DEVICE_ENDPOINT};
 macro_rules! log {
     ($($arg:tt)*) => ({
         glenda::println!("{}DTB: {}{}", glenda::console::ANSI_BLUE,format_args!($($arg)*),glenda::console::ANSI_RESET);
+    })
+}
+#[macro_export]
+macro_rules! warn {
+    ($($arg:tt)*) => ({
+        glenda::println!("{}DTB: {}{}", glenda::console::ANSI_YELLOW,format_args!($($arg)*),glenda::console::ANSI_RESET);
+    })
+}
+
+#[macro_export]
+macro_rules! error {
+    ($($arg:tt)*) => ({
+        glenda::println!("{}DTB: {}{}", glenda::console::ANSI_RED,format_args!($($arg)*),glenda::console::ANSI_RESET);
     })
 }
 
@@ -34,13 +47,7 @@ fn main() -> usize {
     if let Err(e) =
         res_client.get_cap(Badge::null(), ResourceType::Endpoint, DEVICE_ENDPOINT, DEVICE_SLOT)
     {
-        log!("Failed to get device endpoint: {:?}", e);
-        return 1;
-    }
-
-    // Get MMIO Cap
-    if let Err(e) = res_client.get_cap(Badge::null(), ResourceType::Mmio, 0, MMIO_SLOT) {
-        log!("Failed to get MMIO cap: {:?}", e);
+        error!("Failed to get device endpoint: {:?}", e);
         return 1;
     }
 
@@ -60,11 +67,11 @@ fn main() -> usize {
             }
 
             if let Err(e) = dev_client.report(Badge::null(), devices) {
-                log!("Failed to report devices: {:?}", e);
+                error!("Failed to report devices: {:?}", e);
             }
         }
         Err(e) => {
-            log!("Probe failed (not DTB platform?): {:?}", e);
+            error!("Probe failed (not DTB platform?): {:?}", e);
         }
     }
 

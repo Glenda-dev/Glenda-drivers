@@ -1,13 +1,15 @@
-use crate::layout::{DTB_FRAME_SLOT, MAP_VA};
+use crate::layout::{DTB_FRAME_SLOT, MAP_VA, MMIO_CAP, MMIO_SLOT};
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
-use glenda::cap::{CapPtr, Endpoint, Reply};
+use glenda::arch::mem::PGSIZE;
+use glenda::cap::{CapPtr, Endpoint, Frame, Reply};
 use glenda::client::{DeviceClient, ResourceClient};
 use glenda::error::Error;
 use glenda::interface::drivers::BusDriver;
 use glenda::interface::{DeviceService, DriverService, MemoryService};
 use glenda::ipc::Badge;
 use glenda::protocol::device::{DeviceDesc, DeviceDescNode, MMIORegion};
+use glenda::utils::align::align_up;
 
 pub struct DtbDriver<'a> {
     pub endpoint: Endpoint,
@@ -85,17 +87,18 @@ impl<'a> BusDriver for DtbDriver<'a> {
     fn probe(&mut self) -> Result<Vec<DeviceDescNode>, Error> {
         // 1. Get DTB MMIO from Device Manager
         let utcb = unsafe { glenda::ipc::UTCB::new() };
-        utcb.set_recv_window(DTB_FRAME_SLOT);
-        let (fdt_cap, fdt_addr, fdt_size) = self.dev.get_mmio(Badge::null(), 0)?;
-        log!("Got DTB MMIO: cap={:?}, addr={:#x}, size={:#x}", fdt_cap, fdt_addr, fdt_size);
-
-        let size = if fdt_size > 0 { fdt_size } else { 0x10000 };
+        utcb.set_recv_window(MMIO_SLOT);
+        let (mmio_cap, fdt_addr, fdt_size) = self.dev.get_mmio(Badge::null(), 0)?;
+        log!("Got DTB MMIO: cap={:?}, addr={:#x}, size={:#x}", mmio_cap, fdt_addr, fdt_size);
+        let pages = align_up(fdt_size, PGSIZE) / PGSIZE;
+        MMIO_CAP.get_frame(fdt_addr, pages, DTB_FRAME_SLOT)?;
+        let fdt_cap = Frame::from(DTB_FRAME_SLOT);
 
         // 2. Map DTB
-        self.res.mmap(Badge::null(), fdt_cap, MAP_VA, size)?;
+        self.res.mmap(Badge::null(), fdt_cap, MAP_VA, fdt_size)?;
 
         // 3. Parse DTB
-        let fdt_slice = unsafe { core::slice::from_raw_parts(MAP_VA as *const u8, size) };
+        let fdt_slice = unsafe { core::slice::from_raw_parts(MAP_VA as *const u8, fdt_size) };
         let fdt = fdt::Fdt::new(fdt_slice).map_err(|_| Error::InvalidArgs)?;
 
         let mut devices = Vec::new();

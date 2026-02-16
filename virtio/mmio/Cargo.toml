@@ -1,0 +1,9 @@
+[package]
+name = "virtio-mmio"
+version = "0.1.0"
+description = "VirtIO-MMIO bus driver for Glenda Microkernel"
+edition = "2021"
+
+[dependencies]
+libglenda-rs = { path = "../../../lib/libglenda-rs", features = ["rt-service"] }
+virtio-common = { path = "../common" }

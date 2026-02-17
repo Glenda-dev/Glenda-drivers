@@ -60,12 +60,6 @@ fn main() -> usize {
     match driver.probe() {
         Ok(devices) => {
             log!("Found {} devices", devices.len());
-
-            // Log some info about root
-            if let Some(root) = devices.first() {
-                log!("Root device: {}", root.desc.name);
-            }
-
             if let Err(e) = dev_client.report(Badge::null(), devices) {
                 error!("Failed to report devices: {:?}", e);
             }
@@ -74,6 +68,5 @@ fn main() -> usize {
             error!("Probe failed (not DTB platform?): {:?}", e);
         }
     }
-
-    loop {}
+    0
 }

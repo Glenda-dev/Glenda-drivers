@@ -59,5 +59,5 @@ fn main() -> usize {
             error!("Probe failed: {:?}", e);
         }
     }
-    loop {}
+    0
 }

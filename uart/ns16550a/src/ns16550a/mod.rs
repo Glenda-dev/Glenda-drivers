@@ -6,7 +6,7 @@ mod utf8;
 use config::*;
 use consts::*;
 use glenda::cap::IrqHandler;
-use glenda::interface::drivers::UartDriver;
+use glenda_drivers::interface::UartDriver;
 #[cfg(feature = "unicode")]
 use utf8::Utf8Decoder;
 

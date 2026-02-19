@@ -1,10 +1,13 @@
-use core::ptr::NonNull;
+use glenda::cap::Endpoint;
 use glenda::error::Error;
-use glenda::interface::BlockDriver;
-use virtio_common::{consts::*, queue::*, VirtIOError, VirtIOTransport};
+use glenda::mem::io_uring;
+use glenda_drivers::io_uring::IoRingServer;
+use virtio_common::consts::*;
+use virtio_common::queue::*;
+use virtio_common::VirtIOTransport;
 
 #[repr(C)]
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct VirtIOBlkReq {
     pub type_: u32,
     pub reserved: u32,
@@ -19,215 +22,195 @@ pub const VIRTIO_BLK_S_OK: u8 = 0;
 pub const VIRTIO_BLK_S_IOERR: u8 = 1;
 pub const VIRTIO_BLK_S_UNSUPP: u8 = 2;
 
+pub const VIRTIO_F_RING_PACKED: u64 = 34;
+pub const VIRTIO_F_EVENT_IDX: u64 = 29;
+
 pub struct VirtIOBlk {
     transport: VirtIOTransport,
     queue: Option<VirtQueue>,
-    // For DMA memory in this simple implementation, we might need pre-allocated buffers.
-    // In a real system, we'd use a proper DMA allocator.
     dma_vaddr: *mut u8,
     dma_paddr: u64,
+    pending_info: [Option<(u64, u16)>; 64],
+    ring_server: Option<IoRingServer>,
+    endpoint: Option<Endpoint>,
 }
 
 impl VirtIOBlk {
-    pub unsafe fn new(base: NonNull<u8>) -> Result<Self, VirtIOError> {
-        let transport = VirtIOTransport::new(base)?;
-        Ok(Self { transport, queue: None, dma_vaddr: core::ptr::null_mut(), dma_paddr: 0 })
-    }
-
-    pub fn set_dma(&mut self, vaddr: *mut u8, paddr: u64) {
-        self.dma_vaddr = vaddr;
-        self.dma_paddr = paddr;
-    }
-
-    pub fn init_hardware(&mut self) -> Result<(), VirtIOError> {
-        self.transport.set_status(0); // Reset
-        self.transport.add_status(STATUS_ACKNOWLEDGE);
-        self.transport.add_status(STATUS_DRIVER);
-
-        let features = self.transport.get_features();
-        // Just accept what the device offers for now
-        self.transport.set_features(features);
-
-        self.transport.add_status(STATUS_FEATURES_OK);
-        if self.transport.get_status() & STATUS_FEATURES_OK == 0 {
-            return Err(VirtIOError::DeviceNotFound);
+    pub fn new(transport: VirtIOTransport) -> Self {
+        Self {
+            transport,
+            queue: None,
+            dma_vaddr: core::ptr::null_mut(),
+            dma_paddr: 0,
+            pending_info: [None; 64],
+            ring_server: None,
+            endpoint: None,
         }
+    }
+
+    pub fn init(
+        &mut self,
+        dma_vaddr: *mut u8,
+        dma_paddr: u64,
+        endpoint: Endpoint,
+    ) -> Result<(), Error> {
+        self.dma_vaddr = dma_vaddr;
+        self.dma_paddr = dma_paddr;
+        self.endpoint = Some(endpoint);
+
+        self.transport.set_status(STATUS_ACKNOWLEDGE | STATUS_DRIVER);
+
+        let mut features = self.transport.get_device_features();
+        features &= !(VIRTIO_F_EVENT_IDX | VIRTIO_F_RING_PACKED);
+        self.transport.set_driver_features(features);
+        self.transport.set_status(self.transport.get_status() | STATUS_FEATURES_OK);
+
+        let queue_paddr = dma_paddr + 8192;
+        let queue_vaddr = unsafe { dma_vaddr.add(8192) };
+        let queue = unsafe { VirtQueue::new(0, 128, queue_paddr, queue_vaddr) };
+
+        unsafe { self.transport.setup_queue(&queue) };
+        self.queue = Some(queue);
+
+        self.transport.set_status(self.transport.get_status() | STATUS_DRIVER_OK);
         Ok(())
     }
 
-    pub fn init_queue(&mut self, index: u16) -> Result<(), VirtIOError> {
-        unsafe {
-            self.transport.write_queue_sel(index as u32);
-            let max = self.transport.read_queue_max();
-            if max == 0 {
-                return Err(VirtIOError::InvalidHeader);
+    pub fn handle_irq(&mut self) {
+        if self.transport.interrupt_ack() {
+            self.pop_completions();
+        }
+    }
+
+    pub fn handle_ring(&mut self) {
+        let mut sqes = [io_uring::IoUringSqe::default(); 16];
+        let mut count = 0;
+
+        if let Some(server) = self.ring_server.as_mut() {
+            while count < 16 {
+                if let Some(sqe) = server.next_request() {
+                    sqes[count] = sqe;
+                    count += 1;
+                } else {
+                    break;
+                }
             }
-            let num = if max > 64 { 64 } else { max as u16 };
-
-            let vq = VirtQueue::new(index as u32, num, self.dma_paddr, self.dma_vaddr);
-            self.transport.setup_queue(&vq);
-            self.queue = Some(vq);
-        }
-        self.transport.add_status(STATUS_DRIVER_OK);
-        Ok(())
-    }
-}
-
-impl BlockDriver for VirtIOBlk {
-    fn capacity(&self) -> u64 {
-        let mut cap: u64 = 0;
-        for i in 0..8 {
-            cap |= (self.transport.read_config(i) as u64) << (i * 8);
-        }
-        cap
-    }
-
-    fn block_size(&self) -> u32 {
-        512
-    }
-
-    fn read_blocks(&mut self, sector: u64, buf: &mut [u8]) -> Result<usize, Error> {
-        let vq = self.queue.as_mut().ok_or(Error::NotInitialized)?;
-
-        // We need 3 descriptors: Header, Data, Status
-        // Use part of DMA memory for these
-        // Use 2KB offset into the 4KB page to avoid the VirtQueue which is ~1KB
-        let req_vaddr = unsafe { self.dma_vaddr.add(2048) } as *mut VirtIOBlkReq;
-        let req_paddr = self.dma_paddr + 2048;
-
-        let status_vaddr = unsafe { self.dma_vaddr.add(2112) } as *mut u8;
-        let status_paddr = self.dma_paddr + 2112;
-
-        let data_vaddr = unsafe { self.dma_vaddr.add(2240) };
-        let data_paddr = self.dma_paddr + 2240;
-
-        unsafe {
-            req_vaddr.write_volatile(VirtIOBlkReq { type_: VIRTIO_BLK_T_IN, reserved: 0, sector });
-            status_vaddr.write_volatile(0xff);
+        } else {
+            return;
         }
 
-        let desc_id_header = vq.alloc_desc().ok_or(Error::OutOfMemory)?;
-        let desc_id_data = vq.alloc_desc().ok_or(Error::OutOfMemory)?;
-        let desc_id_status = vq.alloc_desc().ok_or(Error::OutOfMemory)?;
-
-        let descs = vq.desc_table();
-
-        // Header
-        descs[desc_id_header as usize].addr = req_paddr;
-        descs[desc_id_header as usize].len = core::mem::size_of::<VirtIOBlkReq>() as u32;
-        descs[desc_id_header as usize].flags = DESC_F_NEXT;
-        descs[desc_id_header as usize].next = desc_id_data;
-
-        // Data
-        descs[desc_id_data as usize].addr = data_paddr;
-        descs[desc_id_data as usize].len = buf.len() as u32;
-        descs[desc_id_data as usize].flags = DESC_F_NEXT | DESC_F_WRITE;
-        descs[desc_id_data as usize].next = desc_id_status;
-
-        // Status
-        descs[desc_id_status as usize].addr = status_paddr;
-        descs[desc_id_status as usize].len = 1;
-        descs[desc_id_status as usize].flags = DESC_F_WRITE;
-        descs[desc_id_status as usize].next = 0;
-
-        vq.submit(desc_id_header);
-        log!("Notifying queue...");
-        self.transport.notify_queue(vq.index);
-
-        // Polling for completion
-        log!("Waiting for completion...");
-        while !vq.can_pop() {
-            core::hint::spin_loop();
-        }
-
-        log!("Popping from queue...");
-        vq.pop();
-
-        let status = unsafe { status_vaddr.read_volatile() };
-
-        // Free descriptors
-        vq.free_desc(desc_id_status);
-        vq.free_desc(desc_id_data);
-        vq.free_desc(desc_id_header);
-
-        if status == VIRTIO_BLK_S_OK {
-            unsafe {
-                core::ptr::copy_nonoverlapping(data_vaddr, buf.as_mut_ptr(), buf.len());
+        for i in 0..count {
+            let sqe = sqes[i];
+            if let Err(_) = self.submit_virtio_request(sqe) {
+                if let Some(server) = self.ring_server.as_mut() {
+                    let _ = server.complete(sqe.user_data, -1);
+                }
             }
-            Ok(buf.len())
-        } else {
-            Err(Error::IoError)
         }
+
+        self.pop_completions();
     }
 
-    fn write_blocks(&mut self, sector: u64, buf: &[u8]) -> Result<usize, Error> {
-        let vq = self.queue.as_mut().ok_or(Error::NotInitialized)?;
+    fn submit_virtio_request(&mut self, sqe: io_uring::IoUringSqe) -> Result<(), Error> {
+        let queue = self.queue.as_mut().ok_or(Error::NotInitialized)?;
 
-        let req_vaddr = unsafe { self.dma_vaddr.add(2048) } as *mut VirtIOBlkReq;
-        let req_paddr = self.dma_paddr + 2048;
+        let req_idx =
+            self.pending_info.iter().position(|x| x.is_none()).ok_or(Error::OutOfMemory)?;
 
-        let status_vaddr = unsafe { self.dma_vaddr.add(2112) } as *mut u8;
-        let status_paddr = self.dma_paddr + 2112;
+        let req_ptr = unsafe { (self.dma_vaddr as *mut VirtIOBlkReq).add(req_idx) };
+        let status_ptr =
+            unsafe { self.dma_vaddr.add(64 * core::mem::size_of::<VirtIOBlkReq>() + req_idx) };
 
-        let data_vaddr = unsafe { self.dma_vaddr.add(2240) };
-        let data_paddr = self.dma_paddr + 2240;
+        let (virtio_type, is_write) = match sqe.opcode {
+            io_uring::IORING_OP_READ => (VIRTIO_BLK_T_IN, false),
+            io_uring::IORING_OP_WRITE => (VIRTIO_BLK_T_OUT, true),
+            _ => return Err(Error::NotSupported),
+        };
 
         unsafe {
-            req_vaddr.write_volatile(VirtIOBlkReq { type_: VIRTIO_BLK_T_OUT, reserved: 0, sector });
-            status_vaddr.write_volatile(0xff);
-            core::ptr::copy_nonoverlapping(buf.as_ptr(), data_vaddr, buf.len());
+            (*req_ptr).type_ = virtio_type;
+            (*req_ptr).sector = sqe.off;
+            *status_ptr = 0xFF;
         }
 
-        let desc_id_header = vq.alloc_desc().ok_or(Error::OutOfMemory)?;
-        let desc_id_data = vq.alloc_desc().ok_or(Error::OutOfMemory)?;
-        let desc_id_status = vq.alloc_desc().ok_or(Error::OutOfMemory)?;
+        let req_paddr = self.dma_paddr + (req_idx * core::mem::size_of::<VirtIOBlkReq>()) as u64;
+        let status_paddr =
+            self.dma_paddr + (64 * core::mem::size_of::<VirtIOBlkReq>() + req_idx) as u64;
 
-        let descs = vq.desc_table();
+        let d1 = queue.alloc_desc().ok_or(Error::OutOfMemory)?;
+        let d2 = queue.alloc_desc().ok_or(Error::OutOfMemory)?;
+        let d3 = queue.alloc_desc().ok_or(Error::OutOfMemory)?;
 
-        // Header
-        descs[desc_id_header as usize].addr = req_paddr;
-        descs[desc_id_header as usize].len = core::mem::size_of::<VirtIOBlkReq>() as u32;
-        descs[desc_id_header as usize].flags = DESC_F_NEXT;
-        descs[desc_id_header as usize].next = desc_id_data;
+        let descs = queue.desc_table();
 
-        // Data
-        descs[desc_id_data as usize].addr = data_paddr;
-        descs[desc_id_data as usize].len = buf.len() as u32;
-        descs[desc_id_data as usize].flags = DESC_F_NEXT; // Not write because we output
-        descs[desc_id_data as usize].next = desc_id_status;
+        descs[d1 as usize] = Descriptor {
+            addr: req_paddr,
+            len: core::mem::size_of::<VirtIOBlkReq>() as u32,
+            flags: DESC_F_NEXT,
+            next: d2,
+        };
 
-        // Status
-        descs[desc_id_status as usize].addr = status_paddr;
-        descs[desc_id_status as usize].len = 1;
-        descs[desc_id_status as usize].flags = DESC_F_WRITE;
-        descs[desc_id_status as usize].next = 0;
+        let flags = if is_write { DESC_F_NEXT } else { DESC_F_NEXT | DESC_F_WRITE };
+        descs[d2 as usize] = Descriptor { addr: sqe.addr, len: sqe.len, flags, next: d3 };
 
-        vq.submit(desc_id_header);
-        glenda::println!("VirtIO-Blk: Notifying queue...");
-        self.transport.notify_queue(vq.index);
+        descs[d3 as usize] =
+            Descriptor { addr: status_paddr, len: 1, flags: DESC_F_WRITE, next: 0 };
 
-        glenda::println!("VirtIO-Blk: Waiting for completion...");
-        while !vq.can_pop() {
-            core::hint::spin_loop();
-        }
-        glenda::println!("VirtIO-Blk: Popping from queue...");
+        queue.submit(d1);
+        self.pending_info[req_idx] = Some((sqe.user_data, d1));
+        self.transport.notify_queue(0);
 
-        vq.pop();
+        Ok(())
+    }
 
-        let status = unsafe { status_vaddr.read_volatile() };
+    fn pop_completions(&mut self) {
+        if let Some(queue) = self.queue.as_mut() {
+            while let Some((id, _len)) = queue.pop() {
+                if let Some(pos) = self
+                    .pending_info
+                    .iter()
+                    .position(|info| info.map_or(false, |(_, head)| head == id as u16))
+                {
+                    let (user_data, head) = self.pending_info[pos].take().unwrap();
 
-        vq.free_desc(desc_id_status);
-        vq.free_desc(desc_id_data);
-        vq.free_desc(desc_id_header);
+                    let mut curr = head;
+                    loop {
+                        let next = queue.desc_table()[curr as usize].next;
+                        let flags = queue.desc_table()[curr as usize].flags;
+                        queue.free_desc(curr);
+                        if flags & DESC_F_NEXT == 0 {
+                            break;
+                        }
+                        curr = next;
+                    }
 
-        if status == VIRTIO_BLK_S_OK {
-            Ok(buf.len())
-        } else {
-            Err(Error::IoError)
+                    let status_ptr = unsafe {
+                        self.dma_vaddr.add(64 * core::mem::size_of::<VirtIOBlkReq>() + pos)
+                    };
+                    let status = unsafe { *status_ptr };
+
+                    let result = if status == VIRTIO_BLK_S_OK { 0 } else { -1 };
+
+                    if let Some(server) = self.ring_server.as_mut() {
+                        let _ = server.complete(user_data, result);
+                    }
+                }
+            }
         }
     }
 
-    fn sync(&mut self) -> Result<(), Error> {
-        Ok(())
+    pub fn set_ring_server(&mut self, server: IoRingServer) {
+        self.ring_server = Some(server);
+    }
+
+    pub fn capacity(&self) -> u64 {
+        unsafe {
+            let ptr = self.transport.config_ptr() as *const u64;
+            ptr.read_volatile()
+        }
+    }
+
+    pub fn block_size(&self) -> u32 {
+        512 // Default
     }
 }

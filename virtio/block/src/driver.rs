@@ -1,18 +1,20 @@
 use crate::layout::{DMA_SLOT, DMA_VA, IRQ_SLOT, MMIO_SLOT, MMIO_VA};
 use crate::BlockService;
 use crate::VirtIOBlk;
+use alloc::string::String;
 use core::ptr::NonNull;
 use glenda::arch::mem::PGSIZE;
 use glenda::error::Error;
-use glenda::interface::drivers::BlockDriver;
-use glenda::interface::{DeviceService, DriverService, MemoryService, ResourceService};
+use glenda::interface::{DeviceService, MemoryService, ResourceService};
 use glenda::ipc::{Badge, UTCB};
+use glenda::protocol::device::LogicDeviceDesc;
+use glenda_drivers::interface::DriverService;
+use virtio_common::VirtIOTransport;
 
 impl DriverService for BlockService<'_> {
     fn init(&mut self) -> Result<(), Error> {
         log!("Driver init...");
         let utcb = unsafe { UTCB::new() };
-
         // 1. Get MMIO Cap
         utcb.set_recv_window(MMIO_SLOT);
         let (mmio, pa, size) = self.dev.get_mmio(Badge::null(), 0)?;
@@ -27,35 +29,33 @@ impl DriverService for BlockService<'_> {
         log!("Got IRQ cap: {:?}", irq_handler);
         // 4. Configure Interrupt
         irq_handler.set_notification(self.endpoint)?;
-        // 5. Init Hardware
-        let mut blk = unsafe {
-            VirtIOBlk::new(NonNull::new(MMIO_VA as *mut u8).unwrap())
-                .expect("Failed to init virtio-blk")
+        // 5. Init Hardware / Construct VirtIOBlk
+        let transport = unsafe {
+            VirtIOTransport::new(NonNull::new(MMIO_VA as *mut u8).expect("MMIO_VA is null"))
+                .expect("Failed to init transport")
         };
-        blk.init_hardware().expect("Failed to init hardware");
-
-        let cap = blk.capacity();
-        log!("Capacity: {} sectors ({} MB)", cap, (cap * 512) / (1024 * 1024));
+        let mut blk = VirtIOBlk::new(transport);
 
         // 6. Allocate DMA memory (1 page)
         let (paddr, frame) = self.res.dma_alloc(Badge::null(), 1, DMA_SLOT)?;
         self.res.mmap(Badge::null(), frame, DMA_VA, PGSIZE)?;
-        blk.set_dma(DMA_VA as *mut u8, paddr as u64);
-        blk.init_queue(0).expect("Failed to init queue");
 
-        log!("VirtIO-Blk initialized!");
+        // 7. Initialize VirtIOBlk
+        blk.init(DMA_VA as *mut u8, paddr as u64, self.endpoint)?;
 
-        // --- TEST READ ---
-        let mut test_buf = [0u8; 512];
-        match blk.read_blocks(0, &mut test_buf) {
-            Ok(_) => {
-                log!("Test read sector 0 success!");
-                log!("First 16 bytes: {:02x?}", &test_buf[0..16]);
-            }
-            Err(e) => log!("Test read failed: {:?}", e),
-        }
+        let cap = blk.capacity();
+        log!("Capacity: {} sectors ({} MB)", cap, (cap * 512) / (1024 * 1024));
 
         self.blk = Some(blk);
+
+        // Register as raw block device logic
+        let desc = LogicDeviceDesc {
+            name: String::from("virtio-blk"),
+            parent_name: String::from("root"),
+            dev_type: glenda::protocol::device::LogicDeviceType::RawBlock(cap * 512),
+        };
+        self.dev.register_logic(Badge::null(), desc, self.endpoint.cap())?;
+
         Ok(())
     }
 

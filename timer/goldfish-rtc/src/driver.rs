@@ -3,7 +3,8 @@ use crate::log;
 use crate::GoldfishRtc;
 use crate::RtcService;
 use glenda::error::Error;
-use glenda::interface::{DeviceService, DriverService, MemoryService};
+use glenda::interface::{DeviceService, MemoryService};
+use glenda_drivers::interface::DriverService;
 use glenda::ipc::{Badge, UTCB};
 
 impl DriverService for RtcService<'_> {

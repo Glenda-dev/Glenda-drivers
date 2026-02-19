@@ -4,7 +4,7 @@ use alloc::vec::Vec;
 use glenda::arch::mem::PGSIZE;
 use glenda::client::{DeviceClient, ResourceClient};
 use glenda::error::Error;
-use glenda::interface::drivers::ProbeDriver;
+use glenda_drivers::interface::ProbeDriver;
 use glenda::interface::{DeviceService, MemoryService};
 use glenda::ipc::Badge;
 use virtio_common::consts::*;

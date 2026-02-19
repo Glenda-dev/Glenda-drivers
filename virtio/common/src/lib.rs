@@ -4,7 +4,9 @@ pub mod consts;
 pub mod queue;
 pub mod transport;
 
-pub use transport::VirtIOTransport;
+pub use consts::*;
+pub use queue::*;
+pub use transport::*;
 
 #[derive(Debug)]
 pub enum VirtIOError {

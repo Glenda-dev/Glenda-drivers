@@ -4,5 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+glenda-drivers = { path = "../../../lib/libglenda_drivers-rs", package = "libglenda_drivers-rs" }
 libglenda-rs = { path = "../../../lib/libglenda-rs", features = ["rt-service"] }
 log = "0.4"

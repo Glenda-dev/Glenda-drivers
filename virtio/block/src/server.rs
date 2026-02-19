@@ -1,36 +1,41 @@
-use crate::VirtIOBlk;
-use glenda::cap::{CapPtr, Endpoint, Reply};
-use glenda::client::DeviceClient;
-use glenda::client::ResourceClient;
+use crate::blk::*;
+use glenda::cap::{CapPtr, Endpoint, Frame, Reply};
+use glenda::client::{DeviceClient, ResourceClient};
 use glenda::error::Error;
-use glenda::interface::drivers::BlockDriver;
-use glenda::interface::{DriverService, SystemService};
-use glenda::ipc::server::handle_call;
-use glenda::ipc::{MsgTag, UTCB};
-use glenda::protocol::drivers::block::{GET_BLOCK_SIZE, GET_CAPACITY, READ_BLOCKS};
-use glenda::protocol::{process::EXIT, PROCESS_PROTO};
+use glenda::interface::{ResourceService, SystemService};
+use glenda::ipc::server::{handle_call, handle_cap_call};
+use glenda::ipc::{Badge, UTCB};
+use glenda::mem::shm::SharedMemory;
+use glenda::utils::manager::{CSpaceManager, CSpaceService};
+use glenda_drivers::interface::BlockDriver;
+use glenda_drivers::interface::DriverService;
+use glenda_drivers::io_uring::{IoRing, IoRingServer};
+use glenda_drivers::protocol::{block, BLOCK_PROTO};
 
 pub struct BlockService<'a> {
     pub blk: Option<VirtIOBlk>,
     pub endpoint: Endpoint,
-    pub reply: Reply,
-    pub recv: CapPtr,
-    pub running: bool,
-
+    pub reply_cap: Reply,
     pub dev: &'a mut DeviceClient,
     pub res: &'a mut ResourceClient,
+    pub cspace_mgr: &'a mut CSpaceManager,
 }
 
+pub const IRQ_BADGE: Badge = Badge::new(0x1);
+
 impl<'a> BlockService<'a> {
-    pub fn new(dev: &'a mut DeviceClient, res: &'a mut ResourceClient) -> Self {
+    pub fn new(
+        dev: &'a mut DeviceClient,
+        res: &'a mut ResourceClient,
+        cspace_mgr: &'a mut CSpaceManager,
+    ) -> Self {
         Self {
             blk: None,
             endpoint: Endpoint::from(CapPtr::null()),
-            reply: Reply::from(CapPtr::null()),
-            recv: CapPtr::null(),
-            running: false,
+            reply_cap: Reply::from(CapPtr::null()),
             dev,
             res,
+            cspace_mgr,
         }
     }
 }
@@ -41,27 +46,24 @@ impl<'a> BlockDriver for BlockService<'a> {
     }
 
     fn block_size(&self) -> u32 {
-        self.blk.as_ref().map(|b| b.block_size()).unwrap_or(512)
+        self.blk.as_ref().map(|b| b.block_size()).unwrap_or(0)
     }
 
-    fn read_blocks(&mut self, sector: u64, buf: &mut [u8]) -> Result<usize, Error> {
-        if let Some(blk) = &mut self.blk {
-            blk.read_blocks(sector, buf)
-        } else {
-            Err(Error::Unknown)
+    fn setup_ring(&mut self, sq_entries: u32, cq_entries: u32) -> Result<Frame, Error> {
+        let slot = self.cspace_mgr.alloc(self.res)?;
+        let (paddr, frame) = self.res.dma_alloc(Badge::null(), 4, slot)?;
+
+        let shm = SharedMemory::from_frame(frame.clone(), paddr as usize, 16384);
+        let ring = IoRing::new(shm, sq_entries, cq_entries)?;
+        let mut server = IoRingServer::new(ring);
+
+        server.set_client_notify(self.endpoint.clone());
+
+        if let Some(blk) = self.blk.as_mut() {
+            blk.set_ring_server(server);
         }
-    }
 
-    fn write_blocks(&mut self, sector: u64, buf: &[u8]) -> Result<usize, Error> {
-        if let Some(blk) = &mut self.blk {
-            blk.write_blocks(sector, buf)
-        } else {
-            Err(Error::Unknown)
-        }
-    }
-
-    fn sync(&mut self) -> Result<(), Error> {
-        Ok(())
+        Ok(frame)
     }
 }
 
@@ -70,72 +72,65 @@ impl<'a> SystemService for BlockService<'a> {
         DriverService::init(self)
     }
 
-    fn listen(&mut self, ep: Endpoint, reply: CapPtr, recv: CapPtr) -> Result<(), Error> {
-        self.endpoint = ep;
-        self.reply = Reply::from(reply);
-        self.recv = recv;
+    fn listen(&mut self, endpoint: Endpoint, reply: CapPtr, _recv: CapPtr) -> Result<(), Error> {
+        self.endpoint = endpoint;
+        self.reply_cap = Reply::from(reply);
         Ok(())
     }
 
     fn run(&mut self) -> Result<(), Error> {
-        self.running = true;
-        log!("Block Service running...");
-        while self.running {
-            let mut utcb = unsafe { UTCB::new() };
-            utcb.clear();
-            utcb.set_reply_window(self.reply.cap());
-            utcb.set_recv_window(self.recv);
-
-            if self.endpoint.recv(&mut utcb).is_ok() {
-                if let Err(e) = self.dispatch(&mut utcb) {
-                    utcb.set_msg_tag(MsgTag::err());
-                    utcb.set_mr(0, e as usize);
-                }
-                let _ = self.reply(&mut utcb);
+        let mut utcb = unsafe { UTCB::new() };
+        loop {
+            if let Err(e) = self.endpoint.recv(&mut utcb) {
+                glenda::println!("BlockService recv error: {:?}", e);
+                continue;
+            }
+            if let Err(e) = self.dispatch(&mut utcb) {
+                glenda::println!("BlockService dispatch error: {:?}", e);
             }
         }
-        Ok(())
     }
 
     fn dispatch(&mut self, utcb: &mut UTCB) -> Result<(), Error> {
+        let badge = utcb.get_badge();
+
+        if badge & IRQ_BADGE != Badge::null() {
+            if let Some(blk) = self.blk.as_mut() {
+                blk.handle_irq();
+            }
+            return Ok(());
+        }
+
+        let tag = utcb.get_msg_tag();
+        if tag.proto() == 0 {
+            if let Some(blk) = self.blk.as_mut() {
+                blk.handle_ring();
+            }
+            return Ok(());
+        }
+
         glenda::ipc_dispatch! {
             self, utcb,
-            (glenda::protocol::drivers::BLOCK_PROTO, GET_CAPACITY) => |s: &mut Self, u: &mut UTCB| {
-                handle_call(u, |u_inner| {
-                    let cap = s.capacity();
-                    u_inner.set_mr(0, cap as usize);
-                    u_inner.set_mr(1, (cap >> 32) as usize);
-                    Ok(())
+            (BLOCK_PROTO, block::GET_CAPACITY) => |s: &mut Self, u: &mut UTCB| {
+                handle_call(u, |_| Ok(s.capacity() as usize))
+            },
+            (BLOCK_PROTO, block::GET_BLOCK_SIZE) => |s: &mut Self, u: &mut UTCB| {
+                handle_call(u, |_| Ok(s.block_size() as usize))
+            },
+            (BLOCK_PROTO, block::SETUP_RING) => |s: &mut Self, u: &mut UTCB| {
+                 handle_cap_call(u, |u| {
+                    let sq = u.get_mr(0) as u32;
+                    let cq = u.get_mr(1) as u32;
+                    let frame = s.setup_ring(sq, cq)?;
+                    Ok(frame.cap())
                 })
             },
-            (glenda::protocol::drivers::BLOCK_PROTO, GET_BLOCK_SIZE) => |s: &mut Self, u: &mut UTCB| {
-                handle_call(u, |u_inner| {
-                    let size = s.block_size();
-                    u_inner.set_mr(0, size as usize);
-                    Ok(())
-                })
-            },
-            (glenda::protocol::drivers::BLOCK_PROTO, READ_BLOCKS) => |s: &mut Self, u: &mut UTCB| {
-                handle_call(u, |u_inner| {
-                    let sector = u_inner.get_mr(0) as u64 | ((u_inner.get_mr(1) as u64) << 32);
-                    let len = u_inner.get_mr(2);
-                    let mut buf = alloc::vec![0u8; len];
-                    s.read_blocks(sector, &mut buf)?;
-                    Ok(())
-                })
-            },
-            (PROCESS_PROTO, EXIT) => |s: &mut Self, _u: &mut UTCB| {
-                s.running = false;
-                Ok(())
-            }
         }
     }
 
     fn reply(&mut self, utcb: &mut UTCB) -> Result<(), Error> {
-        self.reply.reply(utcb)
+        self.reply_cap.reply(utcb)
     }
 
-    fn stop(&mut self) {
-        self.running = false;
-    }
+    fn stop(&mut self) {}
 }

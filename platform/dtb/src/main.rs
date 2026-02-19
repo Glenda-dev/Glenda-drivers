@@ -7,7 +7,7 @@ use crate::layout::{DEVICE_CAP, DEVICE_SLOT, ENDPOINT_SLOT};
 use glenda::cap::Endpoint;
 use glenda::cap::MONITOR_CAP;
 use glenda::client::{DeviceClient, ResourceClient};
-use glenda::interface::drivers::BusDriver;
+use glenda_drivers::interface::BusDriver;
 use glenda::interface::{DeviceService, ResourceService};
 use glenda::ipc::Badge;
 use glenda::protocol::resource::{ResourceType, DEVICE_ENDPOINT};

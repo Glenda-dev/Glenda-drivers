@@ -8,6 +8,36 @@ pub struct VirtIOTransport {
 }
 
 impl VirtIOTransport {
+    pub fn get_device_features(&self) -> u64 {
+        unsafe {
+            self.write_reg(OFF_DEVICE_FEATURES_SEL, 0);
+            let low = self.read_reg(OFF_DEVICE_FEATURES);
+            self.write_reg(OFF_DEVICE_FEATURES_SEL, 1);
+            let high = self.read_reg(OFF_DEVICE_FEATURES);
+            ((high as u64) << 32) | (low as u64)
+        }
+    }
+
+    pub fn set_driver_features(&self, features: u64) {
+        unsafe {
+            self.write_reg(OFF_DRIVER_FEATURES_SEL, 0);
+            self.write_reg(OFF_DRIVER_FEATURES, features as u32);
+            self.write_reg(OFF_DRIVER_FEATURES_SEL, 1);
+            self.write_reg(OFF_DRIVER_FEATURES, (features >> 32) as u32);
+        }
+    }
+
+    pub fn interrupt_ack(&self) -> bool {
+        unsafe {
+            let status = self.read_reg(OFF_INTERRUPT_STATUS);
+            if status != 0 {
+                self.write_reg(OFF_INTERRUPT_ACK, status);
+                true
+            } else {
+                false
+            }
+        }
+    }
     pub unsafe fn new(base: NonNull<u8>) -> Result<Self> {
         let transport = Self { base };
 
@@ -23,12 +53,12 @@ impl VirtIOTransport {
         Ok(transport)
     }
 
-    unsafe fn read_reg(&self, offset: usize) -> u32 {
+    pub unsafe fn read_reg(&self, offset: usize) -> u32 {
         let ptr = self.base.as_ptr().add(offset) as *const u32;
         core::ptr::read_volatile(ptr)
     }
 
-    unsafe fn write_reg(&self, offset: usize, val: u32) {
+    pub unsafe fn write_reg(&self, offset: usize, val: u32) {
         let ptr = self.base.as_ptr().add(offset) as *mut u32;
         core::ptr::write_volatile(ptr, val);
     }

@@ -23,7 +23,7 @@ mod layout;
 use crate::layout::{DEVICE_CAP, DEVICE_SLOT};
 use glenda::cap::MONITOR_CAP;
 use glenda::client::{DeviceClient, ResourceClient};
-use glenda::interface::drivers::ProbeDriver;
+use glenda_drivers::interface::ProbeDriver;
 use glenda::interface::{DeviceService, ResourceService};
 use glenda::ipc::Badge;
 use glenda::protocol::resource::{ResourceType, DEVICE_ENDPOINT};

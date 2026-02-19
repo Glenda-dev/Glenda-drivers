@@ -4,11 +4,12 @@ use glenda::cap::{CapPtr, Endpoint, Reply};
 use glenda::client::DeviceClient;
 use glenda::client::ResourceClient;
 use glenda::error::Error;
-use glenda::interface::drivers::TimerDriver;
-use glenda::interface::{DriverService, SystemService};
+use glenda_drivers::interface::TimerDriver;
+use glenda::interface::SystemService;
+use glenda_drivers::interface::DriverService;
 use glenda::ipc::{MsgTag, UTCB};
-use glenda::protocol::drivers::timer::{GET_TIME, SET_ALARM, SET_TIME, STOP_ALARM};
-use glenda::protocol::drivers::TIMER_PROTO;
+use glenda_drivers::protocol::timer::{GET_TIME, SET_ALARM, SET_TIME, STOP_ALARM};
+use glenda_drivers::protocol::TIMER_PROTO;
 
 pub struct RtcService<'a> {
     pub rtc: Option<GoldfishRtc>,

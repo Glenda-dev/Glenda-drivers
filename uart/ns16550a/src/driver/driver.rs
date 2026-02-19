@@ -3,8 +3,9 @@ use crate::log;
 use crate::Ns16550a;
 use crate::UartService;
 use glenda::error::Error;
-use glenda::interface::{DeviceService, DriverService, MemoryService};
+use glenda::interface::{DeviceService, MemoryService};
 use glenda::ipc::{Badge, UTCB};
+use glenda_drivers::interface::DriverService;
 
 impl<'a> DriverService for UartService<'a> {
     fn init(&mut self) -> Result<(), Error> {

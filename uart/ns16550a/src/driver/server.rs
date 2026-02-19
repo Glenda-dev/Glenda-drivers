@@ -3,11 +3,11 @@ use crate::UartService;
 use glenda::cap::RECV_SLOT;
 use glenda::cap::{CapPtr, Endpoint, Reply};
 use glenda::error::Error;
-use glenda::interface::drivers::UartDriver;
-use glenda::interface::{DriverService, SystemService};
+use glenda::interface::SystemService;
 use glenda::ipc::server::handle_call;
 use glenda::ipc::{MsgTag, UTCB};
-use glenda::protocol;
+use glenda_drivers::interface::{DriverService, UartDriver};
+use glenda_drivers::protocol;
 
 impl<'a> SystemService for UartService<'a> {
     fn init(&mut self) -> Result<(), Error> {
@@ -51,22 +51,16 @@ impl<'a> SystemService for UartService<'a> {
     fn dispatch(&mut self, utcb: &mut UTCB) -> Result<(), Error> {
         glenda::ipc_dispatch! {
             self, utcb,
-            (protocol::drivers::UART_PROTO, protocol::drivers::uart::PUT_CHAR) => |s: &mut Self, u: &mut UTCB| {
+            (protocol::UART_PROTO, protocol::uart::PUT_CHAR) => |s: &mut Self, u: &mut UTCB| {
                 handle_call(u, |u| {
                     s.put_char(u.get_mr(0) as u8);
                     Ok(())
                 })
             },
-            (protocol::drivers::UART_PROTO, protocol::drivers::uart::GET_CHAR) => |s: &mut Self, u: &mut UTCB| {
+            (protocol::UART_PROTO, protocol::uart::GET_CHAR) => |s: &mut Self, u: &mut UTCB| {
                 handle_call(u, |_u| {
                     let c = s.get_char().ok_or(Error::NotFound)?;
                     Ok(c as usize)
-                })
-            },
-            (protocol::PROCESS_PROTO, protocol::process::EXIT) => |s: &mut Self, u: &mut UTCB| {
-                handle_call(u, |_u| {
-                    s.running = false;
-                    Ok(())
                 })
             },
             (protocol::KERNEL_PROTO, protocol::kernel::NOTIFY) => |s: &mut Self, u: &mut UTCB| {

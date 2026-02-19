@@ -13,10 +13,11 @@ pub use net::VirtIONet;
 pub use server::NetService;
 
 use crate::layout::{DEVICE_CAP, DEVICE_SLOT};
-use glenda::cap::CapType;
+use glenda::cap::{CapType, CSPACE_CAP};
 use glenda::cap::{ENDPOINT_CAP, ENDPOINT_SLOT, MONITOR_CAP, RECV_SLOT, REPLY_SLOT};
 use glenda::client::{DeviceClient, ResourceClient};
 use glenda::interface::{ResourceService, SystemService};
+use glenda::utils::manager::{CSpaceManager, CSpaceService};
 use glenda::ipc::Badge;
 use glenda::protocol::resource::{ResourceType, DEVICE_ENDPOINT};
 
@@ -30,6 +31,8 @@ macro_rules! log {
 #[no_mangle]
 fn main() -> usize {
     log!("Starting...");
+    let mut cspace_mgr = unsafe { CSpaceManager::new(CSPACE_CAP, 16) };
+
     let mut res_client = ResourceClient::new(MONITOR_CAP);
     res_client
         .get_cap(Badge::null(), ResourceType::Endpoint, DEVICE_ENDPOINT, DEVICE_SLOT)
@@ -40,7 +43,7 @@ fn main() -> usize {
         .alloc(Badge::null(), CapType::Endpoint, 0, ENDPOINT_SLOT)
         .expect("Failed to allocate endpoint cap for service");
 
-    let mut service = NetService::new(&mut dev_client, &mut res_client);
+    let mut service = NetService::new(&mut dev_client, &mut res_client, &mut cspace_mgr);
     service.listen(ENDPOINT_CAP, REPLY_SLOT, RECV_SLOT).expect("Failed to listen");
 
     SystemService::init(&mut service).expect("Failed to init net service");

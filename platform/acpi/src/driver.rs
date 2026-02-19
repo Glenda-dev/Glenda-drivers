@@ -5,8 +5,9 @@ use alloc::vec::Vec;
 use glenda::cap::{CapPtr, Endpoint, Reply};
 use glenda::client::{DeviceClient, ResourceClient};
 use glenda::error::Error;
-use glenda::interface::drivers::BusDriver;
-use glenda::interface::{DeviceService, DriverService};
+use glenda_drivers::interface::BusDriver;
+use glenda::interface::DeviceService;
+use glenda_drivers::interface::DriverService;
 use glenda::ipc::Badge;
 use glenda::protocol::device::DeviceDescNode;
 

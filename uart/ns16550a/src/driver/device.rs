@@ -1,5 +1,5 @@
 use super::UartService;
-use glenda::interface::drivers::UartDriver;
+use glenda_drivers::interface::UartDriver;
 
 impl<'a> UartDriver for UartService<'a> {
     fn put_char(&mut self, c: u8) {

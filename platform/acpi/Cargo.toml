@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+glenda-drivers = { path = "../../../lib/libglenda_drivers-rs", package = "libglenda_drivers-rs" }
 libglenda-rs = { path = "../../../lib/libglenda-rs", features = ["rt-service"] }
 acpi = { version = "6.1.0" }
 aml = "0.16.4"

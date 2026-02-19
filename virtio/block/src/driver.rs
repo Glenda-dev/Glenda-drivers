@@ -22,6 +22,7 @@ impl DriverService for BlockService<'_> {
 
         // 2. Map MMIO
         self.res.mmap(Badge::null(), mmio, MMIO_VA, 0x1000)?;
+        glenda::arch::sync::fence();
 
         // 3. Get IRQ Cap
         utcb.set_recv_window(IRQ_SLOT);
@@ -36,12 +37,16 @@ impl DriverService for BlockService<'_> {
         };
         let mut blk = VirtIOBlk::new(transport);
 
-        // 6. Allocate DMA memory (1 page)
-        let (paddr, frame) = self.res.dma_alloc(Badge::null(), 1, DMA_SLOT)?;
-        self.res.mmap(Badge::null(), frame, DMA_VA, PGSIZE)?;
+        // 6. Allocate DMA memory (4 pages)
+        log!("Allocating 4 pages of DMA memory...");
+        let (paddr, frame) = self.res.dma_alloc(Badge::null(), 4, DMA_SLOT)?;
+        log!("Mapping DMA: paddr={:#x}, len={:#x}", paddr, 4 * PGSIZE);
+        self.res.mmap(Badge::null(), frame, DMA_VA, 4 * PGSIZE)?;
+        glenda::arch::sync::fence();
 
         // 7. Initialize VirtIOBlk
         blk.init(DMA_VA as *mut u8, paddr as u64, self.endpoint)?;
+        glenda::arch::sync::fence();
 
         let cap = blk.capacity();
         log!("Capacity: {} sectors ({} MB)", cap, (cap * 512) / (1024 * 1024));
@@ -50,7 +55,6 @@ impl DriverService for BlockService<'_> {
 
         // Register as raw block device logic
         let desc = LogicDeviceDesc {
-            name: String::from("virtio-blk"),
             parent_name: String::from("root"),
             dev_type: glenda::protocol::device::LogicDeviceType::RawBlock(cap * 512),
         };

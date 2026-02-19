@@ -1,0 +1,9 @@
+[package]
+name = "ramdisk"
+version = "0.1.0"
+description = "Ramdisk driver for Glenda Microkernel"
+edition = "2024"
+
+[dependencies]
+libglenda-rs = { path = "../../../lib/libglenda-rs", features = ["rt-service"] }
+libglenda_drivers-rs = { path = "../../../lib/libglenda_drivers-rs" }

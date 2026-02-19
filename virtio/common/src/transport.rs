@@ -61,6 +61,7 @@ impl VirtIOTransport {
     pub unsafe fn write_reg(&self, offset: usize, val: u32) {
         let ptr = self.base.as_ptr().add(offset) as *mut u32;
         core::ptr::write_volatile(ptr, val);
+        glenda::arch::sync::fence_io();
     }
 
     pub fn get_device_id(&self) -> u32 {
@@ -89,7 +90,9 @@ impl VirtIOTransport {
     pub fn write_config(&self, offset: usize, val: u8) {
         unsafe {
             let ptr = self.base.as_ptr().add(OFF_CONFIG + offset) as *mut u8;
+            core::ptr::read_volatile(ptr); // dummy read
             core::ptr::write_volatile(ptr, val);
+            glenda::arch::sync::fence_io();
         }
     }
 

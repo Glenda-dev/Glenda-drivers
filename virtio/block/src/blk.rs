@@ -156,6 +156,7 @@ impl VirtIOBlk {
         descs[d3 as usize] =
             Descriptor { addr: status_paddr, len: 1, flags: DESC_F_WRITE, next: 0 };
 
+        glenda::arch::sync::fence();
         queue.submit(d1);
         self.pending_info[req_idx] = Some((sqe.user_data, d1));
         self.transport.notify_queue(0);

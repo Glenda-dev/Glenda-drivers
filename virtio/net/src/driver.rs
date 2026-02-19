@@ -16,6 +16,7 @@ impl DriverService for NetService<'_> {
         let _ = self.dev.get_mmio(Badge::null(), 0)?;
 
         self.res.mmap(Badge::null(), MMIO_CAP, MMIO_VA, 0x1000)?;
+        glenda::arch::sync::fence();
 
         utcb.set_recv_window(IRQ_SLOT);
         let _ = self.dev.get_irq(Badge::null(), 0)?;
@@ -24,10 +25,12 @@ impl DriverService for NetService<'_> {
 
         let (paddr, frame) = self.res.dma_alloc(Badge::null(), 4, DMA_SLOT)?;
         self.res.mmap(Badge::null(), frame, DMA_VA, 4096 * 4)?;
+        glenda::arch::sync::fence();
 
         let mut net = unsafe { VirtIONet::new(MMIO_VA).map_err(|_| Error::Generic)? };
 
         net.init(DMA_VA as *mut u8, paddr as u64, self.endpoint).map_err(|_| Error::Generic)?;
+        glenda::arch::sync::fence();
 
         self.net = Some(net);
 

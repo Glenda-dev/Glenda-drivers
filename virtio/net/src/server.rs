@@ -1,4 +1,3 @@
-use crate::log;
 use crate::net::VirtIONet;
 use glenda::cap::{CapPtr, Endpoint, Frame, Reply};
 use glenda::client::{DeviceClient, ResourceClient};
@@ -7,12 +6,11 @@ use glenda::interface::{ResourceService, SystemService};
 use glenda::ipc::server::{handle_call, handle_cap_call};
 use glenda::ipc::{Badge, UTCB};
 use glenda::mem::shm::SharedMemory;
-use glenda::protocol;
 use glenda::protocol::device::net::MacAddress;
 use glenda::utils::manager::{CSpaceManager, CSpaceService};
 use glenda_drivers::interface::{DriverService, NetDriver};
 use glenda_drivers::io_uring::{IoRing, IoRingServer};
-use glenda_drivers::protocol::{NET_PROTO, net};
+use glenda_drivers::protocol::{net, NET_PROTO};
 
 pub struct NetService<'a> {
     pub net: Option<VirtIONet>,
@@ -48,11 +46,7 @@ impl<'a> NetDriver for NetService<'a> {
         MacAddress { octets }
     }
 
-    fn setup_ring(
-        &mut self,
-        sq_entries: u32,
-        cq_entries: u32,
-    ) -> Result<Frame, Error> {
+    fn setup_ring(&mut self, sq_entries: u32, cq_entries: u32) -> Result<Frame, Error> {
         let slot = self.cspace_mgr.alloc(self.res)?;
         let (paddr, frame) = self.res.dma_alloc(Badge::null(), 4, slot)?;
 

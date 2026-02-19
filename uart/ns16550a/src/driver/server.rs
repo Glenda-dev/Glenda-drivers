@@ -1,4 +1,4 @@
-use crate::log;
+use crate::error;
 use crate::UartService;
 use glenda::cap::RECV_SLOT;
 use glenda::cap::{CapPtr, Endpoint, Reply};
@@ -37,7 +37,8 @@ impl<'a> SystemService for UartService<'a> {
                         if e == Error::Success {
                             continue;
                         }
-                        log!("Failed to dispatch message: {:?}", e);
+                        let badge = utcb.get_badge();
+                        error!("Failed to dispatch message for {}: {:?}", badge, e);
                         utcb.set_msg_tag(MsgTag::err());
                         utcb.set_mr(0, e as usize);
                     }

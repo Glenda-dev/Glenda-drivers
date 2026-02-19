@@ -17,9 +17,9 @@ use glenda::cap::{CapType, CSPACE_CAP};
 use glenda::cap::{ENDPOINT_CAP, ENDPOINT_SLOT, MONITOR_CAP, RECV_SLOT, REPLY_SLOT};
 use glenda::client::{DeviceClient, ResourceClient};
 use glenda::interface::{ResourceService, SystemService};
-use glenda::utils::manager::{CSpaceManager, CSpaceService};
 use glenda::ipc::Badge;
 use glenda::protocol::resource::{ResourceType, DEVICE_ENDPOINT};
+use glenda::utils::manager::CSpaceManager;
 
 #[macro_export]
 macro_rules! log {
@@ -31,7 +31,7 @@ macro_rules! log {
 #[no_mangle]
 fn main() -> usize {
     log!("Starting...");
-    let mut cspace_mgr = unsafe { CSpaceManager::new(CSPACE_CAP, 16) };
+    let mut cspace_mgr = CSpaceManager::new(CSPACE_CAP, 16);
 
     let mut res_client = ResourceClient::new(MONITOR_CAP);
     res_client

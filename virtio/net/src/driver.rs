@@ -1,5 +1,4 @@
 use crate::layout::{DMA_SLOT, DMA_VA, IRQ_CAP, IRQ_SLOT, MMIO_CAP, MMIO_SLOT, MMIO_VA};
-use crate::log;
 use crate::net::VirtIONet;
 use crate::NetService;
 use glenda::error::Error;

@@ -2,6 +2,9 @@
 #![no_main]
 #![allow(dead_code)]
 
+#[macro_use]
+extern crate glenda;
+
 extern crate alloc;
 mod driver;
 mod layout;
@@ -19,21 +22,9 @@ use glenda::protocol::resource::DEVICE_ENDPOINT;
 pub use driver::UartService;
 pub use ns16550a::Ns16550a;
 
-#[macro_export]
-macro_rules! log {
-    ($($arg:tt)*) => ({
-        glenda::println!("{}NS16550A: {}{}", glenda::console::ANSI_BLUE,format_args!($($arg)*),glenda::console::ANSI_RESET);
-    })
-}
-#[macro_export]
-macro_rules! error {
-    ($($arg:tt)*) => ({
-        glenda::println!("{}NS16550A: {}{}", glenda::console::ANSI_RED,format_args!($($arg)*),glenda::console::ANSI_RESET);
-    })
-}
-
 #[no_mangle]
 fn main() -> usize {
+    glenda::console::init_logging("NS16550A");
     log!("Starting...");
     let mut res_client = ResourceClient::new(MONITOR_CAP);
     res_client

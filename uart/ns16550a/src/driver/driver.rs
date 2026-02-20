@@ -1,5 +1,4 @@
 use crate::layout::{IRQ_CAP, IRQ_SLOT, MMIO_SLOT, MMIO_VA};
-use crate::log;
 use crate::Ns16550a;
 use crate::UartService;
 use glenda::error::Error;

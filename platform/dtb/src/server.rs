@@ -1,5 +1,4 @@
 use crate::driver::{DtbDriver, PowerMethod};
-use crate::log;
 use glenda::cap::{CapPtr, Endpoint, Reply};
 use glenda::error::Error;
 use glenda::interface::{DeviceService, SystemService};

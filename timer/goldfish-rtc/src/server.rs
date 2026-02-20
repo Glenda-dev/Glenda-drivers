@@ -1,4 +1,3 @@
-use crate::log;
 use crate::GoldfishRtc;
 use glenda::cap::{CapPtr, Endpoint, Reply};
 use glenda::client::DeviceClient;

@@ -1,6 +1,9 @@
 #![no_std]
 #![no_main]
 
+#[macro_use]
+extern crate glenda;
+
 extern crate alloc;
 mod driver;
 mod layout;
@@ -8,27 +11,16 @@ mod server;
 
 use crate::layout::{DEVICE_CAP, DEVICE_SLOT, ENDPOINT_SLOT};
 pub use driver::DtbDriver;
+
 use glenda::cap::{CapType, Endpoint, MONITOR_CAP};
 use glenda::client::{DeviceClient, ResourceClient};
 use glenda::interface::{ResourceService, SystemService};
 use glenda::ipc::Badge;
 use glenda::protocol::resource::ResourceType;
 
-#[macro_export]
-macro_rules! log {
-    ($($arg:tt)*) => ({
-        glenda::println!("{}DTB: {}{}", glenda::console::ANSI_BLUE,format_args!($($arg)*),glenda::console::ANSI_RESET);
-    })
-}
-#[macro_export]
-macro_rules! error {
-    ($($arg:tt)*) => ({
-        glenda::println!("{}DTB: {}{}", glenda::console::ANSI_RED,format_args!($($arg)*),glenda::console::ANSI_RESET);
-    })
-}
-
 #[unsafe(no_mangle)]
 fn main() -> usize {
+    glenda::console::init_logging("DTB");
     log!("Starting DTB Platform Driver...");
 
     let mut res_client = ResourceClient::new(MONITOR_CAP);

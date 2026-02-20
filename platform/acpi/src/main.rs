@@ -2,29 +2,19 @@
 #![no_main]
 #![allow(dead_code)]
 
+#[macro_use]
+extern crate glenda;
+
 extern crate alloc;
 use crate::layout::{DEVICE_CAP, DEVICE_SLOT, ENDPOINT_SLOT, MMIO_SLOT};
 use glenda::cap::Endpoint;
 use glenda::cap::MONITOR_CAP;
 use glenda::client::{DeviceClient, ResourceClient};
-use glenda_drivers::interface::BusDriver;
 use glenda::interface::{DeviceService, ResourceService};
 use glenda::ipc::Badge;
 use glenda::protocol::resource::ResourceType;
 use glenda::protocol::resource::DEVICE_ENDPOINT;
-
-#[macro_export]
-macro_rules! log {
-    ($($arg:tt)*) => ({
-        glenda::println!("{}ACPI: {}{}", glenda::console::ANSI_BLUE,format_args!($($arg)*),glenda::console::ANSI_RESET);
-    })
-}
-
-macro_rules! error {
-    ($($arg:tt)*) => ({
-        glenda::println!("{}ACPI: {}{}", glenda::console::ANSI_RED,format_args!($($arg)*),glenda::console::ANSI_RESET);
-    })
-}
+use glenda_drivers::interface::BusDriver;
 
 mod arch;
 mod driver;
@@ -36,6 +26,7 @@ pub use driver::AcpiDriver;
 
 #[unsafe(no_mangle)]
 fn main() -> usize {
+    glenda::console::init_logging("ACPI");
     log!("Starting ACPI Platform Driver...");
 
     let mut res_client = ResourceClient::new(MONITOR_CAP);

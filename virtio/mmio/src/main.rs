@@ -2,20 +2,10 @@
 #![no_main]
 #![allow(dead_code)]
 
-extern crate alloc;
+#[macro_use]
+extern crate glenda;
 
-#[macro_export]
-macro_rules! log {
-    ($($arg:tt)*) => ({
-        glenda::println!("{}VirtIO-MMIO: {}{}", glenda::console::ANSI_BLUE, format_args!($($arg)*), glenda::console::ANSI_RESET);
-    })
-}
-#[macro_export]
-macro_rules! error {
-    ($($arg:tt)*) => ({
-        glenda::println!("{}VirtIO-MMIO: {}{}", glenda::console::ANSI_RED, format_args!($($arg)*), glenda::console::ANSI_RESET);
-    })
-}
+extern crate alloc;
 
 mod driver;
 mod layout;
@@ -23,13 +13,14 @@ mod layout;
 use crate::layout::{DEVICE_CAP, DEVICE_SLOT};
 use glenda::cap::MONITOR_CAP;
 use glenda::client::{DeviceClient, ResourceClient};
-use glenda_drivers::interface::ProbeDriver;
 use glenda::interface::{DeviceService, ResourceService};
 use glenda::ipc::Badge;
 use glenda::protocol::resource::{ResourceType, DEVICE_ENDPOINT};
+use glenda_drivers::interface::ProbeDriver;
 
 #[unsafe(no_mangle)]
 fn main() -> usize {
+    glenda::console::init_logging("VirtIO-MMIO");
     log!("Driver starting...");
     let mut res_client = ResourceClient::new(MONITOR_CAP);
 

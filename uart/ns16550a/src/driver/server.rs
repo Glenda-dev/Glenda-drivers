@@ -1,4 +1,3 @@
-use crate::error;
 use crate::UartService;
 use glenda::cap::RECV_SLOT;
 use glenda::cap::{CapPtr, Endpoint, Reply};

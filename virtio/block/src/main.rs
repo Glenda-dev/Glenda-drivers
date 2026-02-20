@@ -2,20 +2,10 @@
 #![no_main]
 #![allow(dead_code)]
 
-extern crate alloc;
+#[macro_use]
+extern crate glenda;
 
-#[macro_export]
-macro_rules! log {
-    ($($arg:tt)*) => ({
-        glenda::println!("{}VirtIO-Blk: {}{}", glenda::console::ANSI_BLUE,format_args!($($arg)*),glenda::console::ANSI_RESET);
-    })
-}
-#[macro_export]
-macro_rules! error {
-    ($($arg:tt)*) => ({
-        glenda::println!("{}VirtIO-Blk: {}{}", glenda::console::ANSI_RED,format_args!($($arg)*),glenda::console::ANSI_RESET);
-    })
-}
+extern crate alloc;
 
 mod blk;
 mod driver;
@@ -36,6 +26,7 @@ pub use server::BlockService;
 
 #[no_mangle]
 fn main() -> usize {
+    glenda::console::init_logging("VirtIO-Blk");
     log!("VirtIO-Blk Driver starting...");
     let mut res_client = ResourceClient::new(MONITOR_CAP);
     res_client

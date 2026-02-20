@@ -1,6 +1,9 @@
 #![no_std]
 #![no_main]
 
+#[macro_use]
+extern crate glenda;
+
 extern crate alloc;
 mod layout;
 
@@ -18,19 +21,6 @@ use glenda::mem::shm::SharedMemory;
 use glenda::protocol::resource::{DEVICE_ENDPOINT, ResourceType};
 use glenda_drivers::io_uring::{IoRing, IoRingServer};
 use glenda_drivers::protocol::BLOCK_PROTO;
-
-#[macro_export]
-macro_rules! log {
-    ($($arg:tt)*) => ({
-        glenda::println!("{}Ramdisk: {}{}", glenda::console::ANSI_BLUE, format_args!($($arg)*), glenda::console::ANSI_RESET);
-    })
-}
-#[macro_export]
-macro_rules! error {
-    ($($arg:tt)*) => ({
-        glenda::println!("{}Ramdisk: {}{}", glenda::console::ANSI_RED, format_args!($($arg)*), glenda::console::ANSI_RESET);
-    })
-}
 
 pub struct Ramdisk {
     data: &'static mut [u8],
@@ -271,6 +261,7 @@ impl<'a> SystemService for RamdiskService<'a> {
 
 #[unsafe(no_mangle)]
 fn main() -> usize {
+    glenda::console::init_logging("Ramdisk");
     log!("Starting Ramdisk driver...");
 
     let mut res_client = ResourceClient::new(MONITOR_CAP);

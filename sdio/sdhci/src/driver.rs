@@ -1,5 +1,4 @@
 use crate::layout::{IRQ_CAP, IRQ_SLOT, MMIO_CAP, MMIO_SLOT, MMIO_VA};
-use crate::log;
 use crate::sdhci::Sdhci;
 use crate::SdhciService;
 use glenda::error::Error;

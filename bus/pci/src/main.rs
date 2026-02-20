@@ -1,19 +1,15 @@
 #![no_std]
 #![no_main]
 
+#[macro_use]
+extern crate glenda;
+
 extern crate alloc;
 use glenda::cap::MONITOR_CAP;
 use glenda::client::{DeviceClient, ResourceClient};
 use glenda::interface::ResourceService;
 use glenda::ipc::Badge;
 use glenda::protocol::resource::{ResourceType, DEVICE_ENDPOINT};
-
-#[macro_export]
-macro_rules! log {
-    ($($arg:tt)*) => ({
-        glenda::println!("{}PCI: {}{}", glenda::console::ANSI_BLUE,format_args!($($arg)*),glenda::console::ANSI_RESET);
-    })
-}
 
 mod driver;
 mod layout;
@@ -24,6 +20,7 @@ use crate::layout::{DEVICE_CAP, DEVICE_SLOT, ENDPOINT_SLOT, MMIO_SLOT};
 
 #[unsafe(no_mangle)]
 fn main() -> usize {
+    glenda::console::init_logging("PCI");
     log!("Starting PCI Bus Driver...");
 
     let mut res_client = ResourceClient::new(MONITOR_CAP);

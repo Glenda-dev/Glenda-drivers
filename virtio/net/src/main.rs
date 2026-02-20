@@ -2,8 +2,10 @@
 #![no_main]
 #![allow(dead_code)]
 
-extern crate alloc;
+#[macro_use]
+extern crate glenda;
 
+extern crate alloc;
 mod driver;
 mod layout;
 mod net;
@@ -21,15 +23,9 @@ use glenda::ipc::Badge;
 use glenda::protocol::resource::{ResourceType, DEVICE_ENDPOINT};
 use glenda::utils::manager::CSpaceManager;
 
-#[macro_export]
-macro_rules! log {
-    ($($arg:tt)*) => ({
-        glenda::println!("{}VirtIO-Net: {}{}", glenda::console::ANSI_BLUE, format_args!($($arg)*), glenda::console::ANSI_RESET);
-    })
-}
-
 #[no_mangle]
 fn main() -> usize {
+    glenda::console::init_logging("VirtIO-Net");
     log!("Starting...");
     let mut cspace_mgr = CSpaceManager::new(CSPACE_CAP, 16);
 

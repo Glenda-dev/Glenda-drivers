@@ -2,8 +2,10 @@
 #![no_main]
 #![allow(dead_code)]
 
-extern crate alloc;
+#[macro_use]
+extern crate glenda;
 
+extern crate alloc;
 mod driver;
 mod layout;
 mod rtc;
@@ -20,15 +22,9 @@ use glenda::interface::{ResourceService, SystemService};
 use glenda::ipc::Badge;
 use glenda::protocol::resource::{ResourceType, DEVICE_ENDPOINT};
 
-#[macro_export]
-macro_rules! log {
-    ($($arg:tt)*) => ({
-        glenda::println!("{}Goldfish-RTC: {}{}", glenda::console::ANSI_BLUE, format_args!($($arg)*), glenda::console::ANSI_RESET);
-    })
-}
-
 #[no_mangle]
 fn main() -> usize {
+    glenda::console::init_logging("Goldfish-RTC");
     log!("Starting...");
     let mut res_client = ResourceClient::new(MONITOR_CAP);
     res_client

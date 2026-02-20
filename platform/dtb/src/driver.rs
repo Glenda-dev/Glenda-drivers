@@ -1,5 +1,4 @@
 pub use crate::layout::{DTB_FRAME_SLOT, MAP_VA, MMIO_CAP, MMIO_SLOT};
-use crate::log;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use glenda::arch::mem::PGSIZE;

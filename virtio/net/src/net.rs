@@ -1,4 +1,3 @@
-use crate::log;
 use core::ptr::NonNull;
 use glenda::cap::Endpoint;
 use glenda::mem::io_uring;

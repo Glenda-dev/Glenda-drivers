@@ -201,6 +201,7 @@ impl<'a> SystemService for RamdiskService<'a> {
         let desc = glenda::protocol::device::LogicDeviceDesc {
             dev_type: glenda::protocol::device::LogicDeviceType::RawBlock(size as u64),
             parent_name: alloc::string::String::from("ramdisk"),
+            badge: None,
         };
         self.dev.register_logic(Badge::null(), desc, ENDPOINT_SLOT)?;
 

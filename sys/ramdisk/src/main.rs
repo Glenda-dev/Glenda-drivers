@@ -189,6 +189,7 @@ impl<'a> SystemService for RamdiskService<'a> {
 
         // 4. Register logical device to Unicorn
         let desc = glenda::protocol::device::LogicDeviceDesc {
+            name: alloc::string::String::from("ramdisk"),
             dev_type: glenda::protocol::device::LogicDeviceType::RawBlock(size as u64),
             parent_name: alloc::string::String::from("ramdisk"),
             badge: None,

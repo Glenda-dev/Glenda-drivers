@@ -21,6 +21,7 @@ impl SystemService for DtbDriver {
         // 3. Register logic devices (Platform/Power and Thermal)
         if self.has_power_off || self.has_reboot {
             let platform_desc = LogicDeviceDesc {
+                name: "platform".into(),
                 dev_type: LogicDeviceType::Platform,
                 parent_name: "dtb".into(),
                 badge: Some(1),
@@ -31,6 +32,7 @@ impl SystemService for DtbDriver {
 
         if !self.thermal_zones.zones.is_empty() {
             let thermal_desc = LogicDeviceDesc {
+                name: "thermal".into(),
                 dev_type: LogicDeviceType::Thermal,
                 parent_name: "dtb".into(),
                 badge: Some(1),

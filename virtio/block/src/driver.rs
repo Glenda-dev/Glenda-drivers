@@ -55,6 +55,7 @@ impl DriverService for BlockService<'_> {
 
         // Register as raw block device logic
         let desc = LogicDeviceDesc {
+            name: String::from("virtio-blk"),
             parent_name: String::from("root"),
             dev_type: glenda::protocol::device::LogicDeviceType::RawBlock(cap * 512),
             badge: None,

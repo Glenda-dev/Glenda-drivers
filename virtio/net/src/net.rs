@@ -1,6 +1,7 @@
 use core::ptr::NonNull;
-use glenda::cap::Endpoint;
+use glenda::cap::{Endpoint, Frame};
 use glenda::mem::io_uring;
+use glenda::mem::shm::SharedMemory;
 use glenda_drivers::io_uring::IoRingServer;
 use virtio_common::consts::*;
 use virtio_common::queue::{Descriptor, VirtQueue, DESC_F_WRITE};
@@ -18,6 +19,7 @@ pub struct VirtIONet {
     pub pending_tx: [Option<(u64, u16)>; 128],
     pub ring_server: Option<IoRingServer>,
     pub endpoint: Option<Endpoint>,
+    pub buffer: Option<SharedMemory>,
 }
 
 impl VirtIONet {
@@ -39,7 +41,23 @@ impl VirtIONet {
             pending_tx: [None; 128],
             ring_server: None,
             endpoint: None,
+            buffer: None,
         })
+    }
+
+    pub fn setup_shm(
+        &mut self,
+        _frame: Frame,
+        vaddr: usize,
+        paddr: u64,
+        size: usize,
+    ) -> core::result::Result<(), glenda::error::Error> {
+        let mut shm = SharedMemory::from_frame(_frame, vaddr, size);
+        shm.set_client_vaddr(vaddr);
+        shm.set_paddr(paddr);
+        self.buffer = Some(shm);
+        log!("VirtIO-Net SHM setup: client_vaddr={:#x}, paddr={:#x}, size={}", vaddr, paddr, size);
+        Ok(())
     }
 
     pub fn init(&mut self, dma_vaddr: *mut u8, dma_paddr: u64, endpoint: Endpoint) -> Result<()> {
@@ -120,14 +138,31 @@ impl VirtIONet {
         let queue = if qidx == 0 { self.rx_queue.as_mut() } else { self.tx_queue.as_mut() }
             .ok_or(VirtIOError::DeviceNotFound)?;
         let head = queue.alloc_desc().ok_or(VirtIOError::OOM)?;
-        let descs = queue.desc_table();
 
-        descs[head as usize] = Descriptor {
-            addr: sqe.addr as u64,
-            len: sqe.len,
-            flags: if qidx == 0 { DESC_F_WRITE } else { 0 },
-            next: 0,
+        let data_paddr = if let Some(ref shm) = self.buffer {
+            let client_vaddr = shm.client_vaddr();
+            let paddr = shm.paddr();
+            let size = shm.size();
+            if (sqe.addr as usize) < client_vaddr
+                || (sqe.addr as usize) + sqe.len as usize > client_vaddr + size
+            {
+                log!("VirtIO-Net error: Address {:#x} out of SHM boundary", sqe.addr);
+                return Err(VirtIOError::InvalidHeader);
+            }
+            paddr + (sqe.addr as u64 - client_vaddr as u64)
+        } else {
+            sqe.addr
         };
+
+        queue.write_desc(
+            head,
+            Descriptor {
+                addr: data_paddr,
+                len: sqe.len,
+                flags: if qidx == 0 { DESC_F_WRITE } else { 0 },
+                next: 0,
+            },
+        );
 
         if qidx == 0 {
             self.pending_rx[head as usize] = Some((sqe.user_data, head));

@@ -121,7 +121,11 @@ impl VirtIOTransport {
     }
 
     pub fn notify(&self, queue_idx: u32) {
-        unsafe { self.write_reg(OFF_QUEUE_NOTIFY, queue_idx) }
+        unsafe {
+            // Memory barrier between DRAM (Avail Ring update) and MMIO (Notification)
+            glenda::arch::sync::fence();
+            self.write_reg(OFF_QUEUE_NOTIFY, queue_idx)
+        }
     }
 
     pub fn ack_interrupt(&self) -> u32 {
@@ -185,6 +189,8 @@ impl VirtIOTransport {
     }
 
     pub fn notify_queue(&self, idx: u32) {
+        // Memory barrier between DRAM (Avail Ring update) and MMIO (Notification)
+        glenda::arch::sync::fence();
         unsafe { self.write_reg(OFF_QUEUE_NOTIFY, idx) }
     }
 }

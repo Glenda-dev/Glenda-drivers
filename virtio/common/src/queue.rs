@@ -94,38 +94,64 @@ impl VirtQueue {
             return None;
         }
         let id = self.free_head;
-        self.free_head = self.desc_table()[id as usize].next;
+        unsafe {
+            let next_ptr = &self.desc_table()[id as usize].next as *const u16;
+            self.free_head = next_ptr.read_volatile();
+        }
         self.num_free -= 1;
         Some(id)
     }
 
     pub fn free_desc(&mut self, id: u16) {
-        self.desc_table()[id as usize].next = self.free_head;
-        self.desc_table()[id as usize].flags = DESC_F_NEXT;
+        unsafe {
+            let next_ptr = &mut self.desc_table()[id as usize].next as *mut u16;
+            let flags_ptr = &mut self.desc_table()[id as usize].flags as *mut u16;
+            next_ptr.write_volatile(self.free_head);
+            flags_ptr.write_volatile(DESC_F_NEXT);
+        }
         self.free_head = id;
         self.num_free += 1;
     }
 
+    pub fn write_desc(&mut self, id: u16, desc: Descriptor) {
+        unsafe {
+            let ptr = self.desc_table().as_mut_ptr().add(id as usize);
+            ptr.write_volatile(desc);
+            core::sync::atomic::fence(core::sync::atomic::Ordering::SeqCst);
+        }
+    }
+
     pub fn submit(&mut self, head: u16) {
         let avail = self.avail_ring();
-        let ring_idx = avail.idx as usize % self.num as usize;
         unsafe {
+            // Must use volatile read/write for idx
+            let idx_ptr = core::ptr::addr_of_mut!(avail.idx);
+            let idx = idx_ptr.read_volatile();
+            let ring_idx = idx as usize % self.num as usize;
+
             let ring_ptr = self.vaddr.add(16 * self.num as usize + 4) as *mut u16;
             ring_ptr.add(ring_idx).write_volatile(head);
-            core::sync::atomic::fence(core::sync::atomic::Ordering::SeqCst);
-            avail.idx = avail.idx.wrapping_add(1);
+            glenda::arch::sync::fence();
+
+            idx_ptr.write_volatile(idx.wrapping_add(1));
         }
     }
 
     pub fn can_pop(&self) -> bool {
         let used = self.used_ring();
-        self.last_used_idx != used.idx
+        unsafe {
+            let idx_ptr = &used.idx as *const u16;
+            self.last_used_idx != idx_ptr.read_volatile()
+        }
     }
 
     pub fn pop(&mut self) -> Option<(u32, u32)> {
         if !self.can_pop() {
             return None;
         }
+        // Memory barrier to ensure Used ring updates are visible after readingUsed.idx
+        glenda::arch::sync::fence();
+
         let used = self.used_ring();
         let ring_idx = self.last_used_idx as usize % self.num as usize;
         let elem = unsafe {

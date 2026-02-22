@@ -78,7 +78,7 @@ pub fn parse_madt(madt: &Madt, devices: &mut Vec<DeviceDescNode>) {
                     devices.push(DeviceDescNode {
                         parent: usize::MAX,
                         desc: DeviceDesc {
-                            name: format!("aplic@{:x}", base_addr),
+                            name: format!("aplic@{:#x}", base_addr),
                             compatible: alloc::vec!["riscv,aplic".to_string()],
                             mmio: alloc::vec![MMIORegion {
                                 base_addr: base_addr as usize,
@@ -102,7 +102,7 @@ pub fn parse_madt(madt: &Madt, devices: &mut Vec<DeviceDescNode>) {
                     devices.push(DeviceDescNode {
                         parent: usize::MAX,
                         desc: DeviceDesc {
-                            name: format!("plic@{:x}", base_addr),
+                            name: format!("plic@{:#x}", base_addr),
                             compatible: alloc::vec![
                                 "riscv,plic0".to_string(),
                                 "sifive,plic-1.0.0".to_string()

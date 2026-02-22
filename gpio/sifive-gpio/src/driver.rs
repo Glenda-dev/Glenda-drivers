@@ -3,8 +3,8 @@ use crate::GpioService;
 use crate::SiFiveGpio;
 use glenda::error::Error;
 use glenda::interface::{DeviceService, MemoryService};
-use glenda_drivers::interface::DriverService;
 use glenda::ipc::{Badge, UTCB};
+use glenda_drivers::interface::DriverService;
 
 impl DriverService for GpioService<'_> {
     fn init(&mut self) -> Result<(), Error> {
@@ -29,7 +29,7 @@ impl DriverService for GpioService<'_> {
 
         // 5. Init Hardware
         self.gpio = Some(SiFiveGpio::new(MMIO_VA));
-        log!("SiFive GPIO initialized at 0x{:x}", MMIO_VA);
+        log!("SiFive GPIO initialized at {:#x}", MMIO_VA);
 
         Ok(())
     }

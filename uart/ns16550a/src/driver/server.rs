@@ -37,7 +37,12 @@ impl<'a> SystemService for UartService<'a> {
                             continue;
                         }
                         let badge = utcb.get_badge();
-                        error!("Failed to dispatch message for {}: {:?}", badge, e);
+                        let proto = utcb.get_msg_tag().proto();
+                        let label = utcb.get_msg_tag().label();
+                        error!(
+                            "Failed to dispatch message for {}: {:?}, proto={:#x}, label={:#x}",
+                            badge, e, proto, label
+                        );
                         utcb.set_msg_tag(MsgTag::err());
                         utcb.set_mr(0, e as usize);
                     }

@@ -3,8 +3,8 @@ use crate::sdhci::Sdhci;
 use crate::SdhciService;
 use glenda::error::Error;
 use glenda::interface::{DeviceService, MemoryService};
-use glenda_drivers::interface::DriverService;
 use glenda::ipc::{Badge, UTCB};
+use glenda_drivers::interface::DriverService;
 
 impl DriverService for SdhciService<'_> {
     fn init(&mut self) -> Result<(), Error> {
@@ -12,17 +12,17 @@ impl DriverService for SdhciService<'_> {
         let utcb = unsafe { UTCB::new() };
 
         utcb.set_recv_window(MMIO_SLOT);
-        let _ = self.dev.get_mmio(Badge::null())?;
+        let _ = self.dev.get_mmio(Badge::null(), 0)?;
         self.res.mmap(Badge::null(), MMIO_CAP, MMIO_VA, 0x1000)?;
 
         utcb.set_recv_window(IRQ_SLOT);
-        let _ = self.dev.get_irq(Badge::null())?;
+        let _ = self.dev.get_irq(Badge::null(), 0)?;
         IRQ_CAP.set_notification(self.endpoint)?;
         IRQ_CAP.set_priority(1)?;
         IRQ_CAP.ack()?;
 
         self.sdhci = Some(Sdhci::new(MMIO_VA));
-        log!("SDHCI initialized at 0x{:x}", MMIO_VA);
+        log!("SDHCI initialized at {:#x}", MMIO_VA);
 
         Ok(())
     }

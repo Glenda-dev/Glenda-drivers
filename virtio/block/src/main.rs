@@ -27,7 +27,7 @@ pub use server::BlockService;
 #[no_mangle]
 fn main() -> usize {
     glenda::console::init_logging("VirtIO-Blk");
-    log!("VirtIO-Blk Driver starting...");
+    log!("Driver starting...");
     let mut res_client = ResourceClient::new(MONITOR_CAP);
     res_client
         .get_cap(Badge::null(), ResourceType::Endpoint, DEVICE_ENDPOINT, DEVICE_SLOT)

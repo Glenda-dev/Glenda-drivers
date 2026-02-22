@@ -8,6 +8,7 @@ use glenda::error::Error;
 use glenda::interface::{DeviceService, MemoryService, ResourceService};
 use glenda::ipc::{Badge, UTCB};
 use glenda::protocol::device::LogicDeviceDesc;
+use glenda::utils::manager::CSpaceService;
 use glenda_drivers::interface::DriverService;
 use virtio_common::VirtIOTransport;
 
@@ -28,8 +29,18 @@ impl DriverService for BlockService<'_> {
         utcb.set_recv_window(IRQ_SLOT);
         let irq_handler = self.dev.get_irq(Badge::null(), 0)?;
         log!("Got IRQ cap: {:?}", irq_handler);
+
         // 4. Configure Interrupt
-        irq_handler.set_notification(self.endpoint)?;
+        let irq_notify_slot = self.cspace_mgr.alloc(self.res)?;
+        self.cspace_mgr.root().mint(
+            self.endpoint.cap(),
+            irq_notify_slot,
+            crate::server::IRQ_BADGE,
+            glenda::cap::Rights::ALL,
+        )?;
+        irq_handler.set_notification(glenda::cap::Endpoint::from(irq_notify_slot))?;
+        self.irq = Some(irq_handler);
+
         // 5. Init Hardware / Construct VirtIOBlk
         let transport = unsafe {
             VirtIOTransport::new(NonNull::new(MMIO_VA as *mut u8).expect("MMIO_VA is null"))
@@ -52,7 +63,7 @@ impl DriverService for BlockService<'_> {
         log!("Capacity: {} sectors ({} MB)", cap, (cap * 512) / (1024 * 1024));
 
         self.blk = Some(blk);
-
+        log!("Registering block device with capacity {} sectors", cap);
         // Register as raw block device logic
         let desc = LogicDeviceDesc {
             name: String::from("virtio-blk"),

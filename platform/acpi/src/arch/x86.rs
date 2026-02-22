@@ -43,7 +43,7 @@ pub fn parse_madt(madt: &acpi::sdt::madt::Madt, devices: &mut Vec<DeviceDescNode
                     devices.push(DeviceDescNode {
                         parent: usize::MAX,
                         desc: DeviceDesc {
-                            name: format!("ioapic@{:x}", addr),
+                            name: format!("ioapic@{:#x}", addr),
                             compatible: alloc::vec!["intel,ioapic".to_string()],
                             mmio: alloc::vec![MMIORegion {
                                 base_addr: addr as usize,

@@ -23,7 +23,6 @@ use glenda::ipc::server::{handle_call, handle_cap_call, handle_notify};
 use glenda::ipc::{Badge, MsgTag, UTCB};
 use glenda::mem::shm::SharedMemory;
 use glenda::protocol::resource::{DEVICE_ENDPOINT, ResourceType};
-use glenda::protocol::{GENERIC_PROTO, generic};
 use glenda_drivers::protocol::BLOCK_PROTO;
 
 pub struct Ramdisk {
@@ -98,11 +97,6 @@ impl Ramdisk {
         };
         let mut server = IoUringServer::new(ring);
         server.set_client_notify(endpoint);
-        server.set_notify_tag(MsgTag::new(
-            BLOCK_PROTO,
-            glenda_drivers::protocol::block::NOTIFY_IO,
-            glenda::ipc::MsgFlags::NONE,
-        ));
         self.ring = Some(server);
         Ok(frame)
     }
@@ -306,7 +300,7 @@ impl<'a> SystemService for RamdiskService<'a> {
     fn dispatch(&mut self, utcb: &mut UTCB) -> Result<(), Error> {
         glenda::ipc_dispatch! {
             self, utcb,
-            (GENERIC_PROTO, generic::NOTIFY) => |s: &mut Self, u: &mut UTCB| {
+            (glenda::protocol::KERNEL_PROTO, glenda::protocol::kernel::NOTIFY) => |s: &mut Self, u: &mut UTCB| {
                 handle_notify(u, |_| {
                     if let Some(ramdisk) = s.ramdisk.as_mut() {
                         ramdisk.handle_io()?;
@@ -351,14 +345,6 @@ impl<'a> SystemService for RamdiskService<'a> {
                     let ramdisk = s.ramdisk.as_mut().unwrap();
                     let frame = ramdisk.setup_ring(res, sq, cq, notify_ep)?;
                     Ok(frame.cap())
-                })
-            },
-            (BLOCK_PROTO, glenda_drivers::protocol::block::NOTIFY_SQ) => |s: &mut Self, u: &mut UTCB| {
-                handle_notify(u, |_u| {
-                    if let Some(ramdisk) = s.ramdisk.as_mut() {
-                        ramdisk.handle_io()?;
-                    }
-                    Ok(())
                 })
             },
             (glenda::protocol::KERNEL_PROTO, glenda::protocol::kernel::NOTIFY) => |s: &mut Self, u: &mut UTCB| {

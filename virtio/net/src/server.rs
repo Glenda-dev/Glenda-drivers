@@ -64,11 +64,6 @@ impl<'a> NetDriver for NetService<'a> {
         let mut server = IoUringServer::new(ring);
 
         server.set_client_notify(notify_ep);
-        server.set_notify_tag(glenda::ipc::MsgTag::new(
-            NET_PROTO,
-            net::NOTIFY_IO,
-            glenda::ipc::MsgFlags::NONE,
-        ));
 
         if let Some(net) = self.net.as_mut() {
             net.set_ring_server(server);
@@ -138,31 +133,17 @@ impl<'a> SystemService for NetService<'a> {
     }
 
     fn dispatch(&mut self, utcb: &mut UTCB) -> Result<(), Error> {
-        let badge = utcb.get_badge();
-
-        if badge & IRQ_BADGE != Badge::null() {
-            return handle_notify(utcb, |_| {
-                if let Some(net) = self.net.as_mut() {
-                    net.handle_irq();
-                }
-                Ok(())
-            });
-        }
-
         glenda::ipc_dispatch! {
             self, utcb,
             (glenda::protocol::KERNEL_PROTO, glenda::protocol::kernel::NOTIFY) => |s: &mut Self, u: &mut UTCB| {
-                handle_notify(u, |_| {
+                handle_notify(u, |u| {
+                    let badge = u.get_badge();
                     if let Some(net) = s.net.as_mut() {
-                        net.handle_irq();
-                    }
-                    Ok(())
-                })
-            },
-            (NET_PROTO, net::NOTIFY_SQ) => |s: &mut Self, u: &mut UTCB| {
-                handle_notify(u, |_| {
-                    if let Some(net) = s.net.as_mut() {
-                        net.handle_ring();
+                        if (badge.bits() & IRQ_BADGE.bits()) != 0 {
+                            net.handle_irq();
+                        } else {
+                            net.handle_ring();
+                        }
                     }
                     Ok(())
                 })
@@ -202,16 +183,7 @@ impl<'a> SystemService for NetService<'a> {
                     Ok(frame.cap())
                  })
             },
-            (_, _) => |s: &mut Self, u: &mut UTCB| {
-                let tag = u.get_msg_tag();
-                if tag.proto() == 0 && tag.label() == 0 {
-                     return handle_notify(u, |_u| {
-                        if let Some(net) = s.net.as_mut() {
-                            net.handle_irq();
-                        }
-                        Ok(())
-                    });
-                }
+            (_, _) => |_s: &mut Self, _u: &mut UTCB| {
                 Err(Error::NotSupported)
             }
         }

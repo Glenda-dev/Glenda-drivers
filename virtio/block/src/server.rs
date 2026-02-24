@@ -75,11 +75,6 @@ impl<'a> BlockDriver for BlockService<'a> {
         let mut server = IoUringServer::new(ring);
 
         server.set_client_notify(notify_ep);
-        server.set_notify_tag(glenda::ipc::MsgTag::new(
-            BLOCK_PROTO,
-            block::NOTIFY_IO,
-            glenda::ipc::MsgFlags::NONE,
-        ));
 
         if let Some(blk) = self.blk.as_mut() {
             blk.set_ring_server(server);
@@ -147,37 +142,20 @@ impl<'a> SystemService for BlockService<'a> {
     }
 
     fn dispatch(&mut self, utcb: &mut UTCB) -> Result<(), Error> {
-        let badge = utcb.get_badge();
-
-        if badge & IRQ_BADGE != Badge::null() {
-            return handle_notify(utcb, |_| {
-                if let Some(blk) = self.blk.as_mut() {
-                    blk.handle_irq();
-                    if let Some(irq) = self.irq.as_ref() {
-                        irq.ack()?;
-                    }
-                }
-                Ok(())
-            });
-        }
-
         glenda::ipc_dispatch! {
             self, utcb,
             (glenda::protocol::KERNEL_PROTO, glenda::protocol::kernel::NOTIFY) => |s: &mut Self, u: &mut UTCB| {
-                handle_notify(u, |_| {
+                handle_notify(u, |u| {
+                    let badge = u.get_badge();
                     if let Some(blk) = s.blk.as_mut() {
-                        blk.handle_irq();
-                        if let Some(irq) = s.irq.as_ref() {
-                            irq.ack()?;
+                        if (badge.bits() & IRQ_BADGE.bits()) != 0 {
+                            blk.handle_irq();
+                            if let Some(irq) = s.irq.as_ref() {
+                                irq.ack()?;
+                            }
+                        } else {
+                            blk.handle_ring();
                         }
-                    }
-                    Ok(())
-                })
-            },
-            (BLOCK_PROTO, block::NOTIFY_SQ) => |s: &mut Self, u: &mut UTCB| {
-                handle_notify(u, |_| {
-                    if let Some(blk) = s.blk.as_mut() {
-                        blk.handle_ring();
                     }
                     Ok(())
                 })
@@ -195,7 +173,7 @@ impl<'a> SystemService for BlockService<'a> {
                 let vaddr = u.get_mr(0);
                 let size = u.get_mr(1);
                 let paddr = u.get_mr(2) as u64;
-                
+
                 s.cspace_mgr.root().move_cap(recv_slot, slot)?;
 
                 handle_call(u, |_u| {

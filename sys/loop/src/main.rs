@@ -33,7 +33,7 @@ fn main() -> usize {
     let mut vfs_client = FsClient::new(MONITOR_CAP);
     log!("Opening /disk.img...");
 
-    let file_badge = match vfs_client.open("/disk.img", OpenFlags::O_RDWR, 0) {
+    let file_badge = match vfs_client.open(Badge::null(), "/disk.img", OpenFlags::O_RDWR, 0) {
         Ok(b) => b,
         Err(e) => {
             log!("Failed to open /disk.img: {:?}", e);

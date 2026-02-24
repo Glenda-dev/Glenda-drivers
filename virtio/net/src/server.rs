@@ -3,13 +3,12 @@ use glenda::cap::{CapPtr, Endpoint, Frame, Reply};
 use glenda::client::{DeviceClient, ResourceClient};
 use glenda::error::Error;
 use glenda::interface::{ResourceService, SystemService};
+use glenda::io::uring::{IoUringBuffer as IoUring, IoUringServer};
 use glenda::ipc::server::{handle_call, handle_cap_call, handle_notify};
 use glenda::ipc::{Badge, UTCB};
-use glenda::mem::shm::SharedMemory;
 use glenda::protocol::device::net::MacAddress;
 use glenda::utils::manager::{CSpaceManager, CSpaceService};
 use glenda_drivers::interface::{DriverService, NetDriver};
-use glenda_drivers::io_uring::{IoRing, IoRingServer};
 use glenda_drivers::protocol::{net, NET_PROTO};
 
 pub struct NetService<'a> {
@@ -59,10 +58,10 @@ impl<'a> NetDriver for NetService<'a> {
         // For 4 entries, we only need a few hundred bytes, so 1 page is plenty.
         let (paddr, frame) = self.res.dma_alloc(Badge::null(), 1, slot)?;
 
-        let shm =
-            SharedMemory::from_frame(frame.clone(), paddr as usize, glenda::arch::mem::PGSIZE);
-        let ring = IoRing::new(shm, sq_entries, cq_entries)?;
-        let mut server = IoRingServer::new(ring);
+        let ring = unsafe {
+            IoUring::new(paddr as *mut u8, glenda::arch::mem::PGSIZE, sq_entries, cq_entries)
+        };
+        let mut server = IoUringServer::new(ring);
 
         server.set_client_notify(notify_ep);
         server.set_notify_tag(glenda::ipc::MsgTag::new(
@@ -111,12 +110,14 @@ impl<'a> SystemService for NetService<'a> {
     fn run(&mut self) -> Result<(), Error> {
         let mut utcb = unsafe { UTCB::new() };
         loop {
+            // Clear receive slot before receiving new messages
+            let _ = self.cspace_mgr.root().delete(self.recv);
             utcb.clear();
             utcb.set_reply_window(self.reply_cap.cap());
             utcb.set_recv_window(self.recv);
 
             if let Err(e) = self.endpoint.recv(&mut utcb) {
-                glenda::println!("NetService recv error: {:?}", e);
+                log!("Recv error: {:?}", e);
                 continue;
             }
             match self.dispatch(&mut utcb) {
@@ -127,7 +128,7 @@ impl<'a> SystemService for NetService<'a> {
                     // Successfully handled, but no reply needed (e.g., notification)
                 }
                 Err(e) => {
-                    glenda::println!("NetService dispatch error: {:?}", e);
+                    log!("Dispatch error: {:?}", e);
                     utcb.set_msg_tag(glenda::ipc::MsgTag::err());
                     utcb.set_mr(0, e as usize);
                     let _ = self.reply(&mut utcb);

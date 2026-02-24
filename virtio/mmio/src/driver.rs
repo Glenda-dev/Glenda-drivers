@@ -4,9 +4,9 @@ use alloc::vec::Vec;
 use glenda::arch::mem::PGSIZE;
 use glenda::client::{DeviceClient, ResourceClient};
 use glenda::error::Error;
-use glenda_drivers::interface::ProbeDriver;
 use glenda::interface::{DeviceService, MemoryService};
 use glenda::ipc::Badge;
+use glenda_drivers::interface::ProbeDriver;
 use virtio_common::consts::*;
 
 pub struct VirtioMmioDriver<'a> {
@@ -36,10 +36,8 @@ impl<'a> ProbeDriver for VirtioMmioDriver<'a> {
     fn probe(&mut self) -> Result<Vec<String>, Error> {
         // 1. Get MMIO for this virtio,mmio device
         // Use a temp UTCB to set the receive window for the capability
-        let utcb = unsafe { glenda::ipc::UTCB::new() };
-        utcb.set_recv_window(MMIO_SLOT);
 
-        let (frame, paddr, size) = self.dev.get_mmio(Badge::null(), 0)?;
+        let (frame, paddr, size) = self.dev.get_mmio(Badge::null(), 0, MMIO_SLOT)?;
         log!("Got MMIO: paddr={:#x}, size={:#x}", paddr, size);
 
         // 2. Map it to our address space

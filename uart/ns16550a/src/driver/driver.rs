@@ -3,23 +3,18 @@ use crate::Ns16550a;
 use crate::UartService;
 use glenda::error::Error;
 use glenda::interface::{DeviceService, MemoryService};
-use glenda::ipc::{Badge, UTCB};
+use glenda::ipc::Badge;
 use glenda_drivers::interface::DriverService;
 
 impl<'a> DriverService for UartService<'a> {
     fn init(&mut self) -> Result<(), Error> {
         log!("Driver init...");
-        let utcb = unsafe { UTCB::new() };
 
-        // 1. Get MMIO Cap
-        utcb.set_recv_window(MMIO_SLOT);
-        let (mmio, pa, size) = self.dev.get_mmio(Badge::null(), 0)?;
+        let (mmio, pa, size) = self.dev.get_mmio(Badge::null(), 0, MMIO_SLOT)?;
         log!("Got MMIO cap: addr={:#x}, size={:#x}", pa, size);
         // 2. Map MMIO
         self.res.mmap(Badge::null(), mmio, MMIO_VA, 0x1000)?;
-        // 3. Get IRQ Cap
-        utcb.set_recv_window(IRQ_SLOT);
-        let irq_handler = self.dev.get_irq(Badge::null(), 0)?;
+        let irq_handler = self.dev.get_irq(Badge::null(), 0, IRQ_SLOT)?;
         log!("Setting notification to {:?}", self.endpoint);
         // 4. Configure Interrupt
         // We use our endpoint to receive interrupts.

@@ -116,9 +116,8 @@ impl DtbDriver {
 impl DriverService for DtbDriver {
     fn init(&mut self) -> Result<(), Error> {
         // 1. Get DTB MMIO from Device Manager
-        let utcb = unsafe { glenda::ipc::UTCB::new() };
-        utcb.set_recv_window(MMIO_SLOT);
-        let (mmio_cap, fdt_addr, fdt_size) = self.dev_client.get_mmio(Badge::null(), 0)?;
+        let (mmio_cap, fdt_addr, fdt_size) =
+            self.dev_client.get_mmio(Badge::null(), 0, MMIO_SLOT)?;
         log!("Got DTB MMIO: cap={:?}, addr={:#x}, size={:#x}", mmio_cap, fdt_addr, fdt_size);
 
         let pages = align_up(fdt_size, PGSIZE) / PGSIZE;

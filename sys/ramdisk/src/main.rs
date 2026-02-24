@@ -17,25 +17,25 @@ use glenda::cap::{
 use glenda::client::{DeviceClient, ResourceClient};
 use glenda::error::Error;
 use glenda::interface::{DeviceService, MemoryService, ResourceService, SystemService};
+use glenda::io::uring::{IOURING_OP_READ, IOURING_OP_SYNC, IOURING_OP_WRITE, IoUringSqe};
+use glenda::io::uring::{IoUringBuffer as IoUring, IoUringServer};
 use glenda::ipc::server::{handle_call, handle_cap_call, handle_notify};
 use glenda::ipc::{Badge, MsgTag, UTCB};
-use glenda::mem::io_uring::{IORING_OP_READ, IORING_OP_SYNC, IORING_OP_WRITE, IoUringSqe};
 use glenda::mem::shm::SharedMemory;
 use glenda::protocol::resource::{DEVICE_ENDPOINT, ResourceType};
 use glenda::protocol::{GENERIC_PROTO, generic};
-use glenda_drivers::io_uring::{IoRing, IoRingServer};
 use glenda_drivers::protocol::BLOCK_PROTO;
 
 pub struct Ramdisk {
     data: &'static mut [u8],
     block_size: u32,
-    ring: Option<IoRingServer>,
+    ring: Option<IoUringServer>,
     buffer: Option<SharedMemory>,
 }
 
 impl Ramdisk {
     pub fn new(data: &'static mut [u8]) -> Self {
-        Self { data, block_size: 4096, ring: None, buffer: None }
+        Self { data, block_size: 512, ring: None, buffer: None }
     }
 
     pub fn capacity(&self) -> u64 {
@@ -46,16 +46,17 @@ impl Ramdisk {
         self.block_size
     }
 
+    pub fn set_block_size(&mut self, block_size: u32) {
+        self.block_size = block_size;
+    }
+
     pub fn setup_buffer(
         &mut self,
         res: &mut ResourceClient,
         client_vaddr: usize,
         size: usize,
         paddr: u64,
-        recv_slot: CapPtr,
     ) -> Result<(), Error> {
-        // Move the cap from recv window to BUFFER_SLOT
-        CSPACE_CAP.move_cap(recv_slot, BUFFER_SLOT)?;
         let frame = Frame::from(BUFFER_SLOT);
         let pages = (size + glenda::arch::mem::PGSIZE - 1) / glenda::arch::mem::PGSIZE;
 
@@ -91,10 +92,11 @@ impl Ramdisk {
         let frame = Frame::from(res.alloc(Badge::null(), CapType::Frame, 1, RING_SLOT)?);
         // 2. Map it in our space
         res.mmap(Badge::null(), frame, RING_VA, glenda::arch::mem::PGSIZE)?;
-        // 3. Init IoRing
-        let shm = SharedMemory::from_frame(frame.clone(), RING_VA, glenda::arch::mem::PGSIZE);
-        let ring = IoRing::new(shm, sq_entries, cq_entries)?;
-        let mut server = IoRingServer::new(ring);
+        // 3. Init IoUring
+        let ring = unsafe {
+            IoUring::new(RING_VA as *mut u8, glenda::arch::mem::PGSIZE, sq_entries, cq_entries)
+        };
+        let mut server = IoUringServer::new(ring);
         server.set_client_notify(endpoint);
         server.set_notify_tag(MsgTag::new(
             BLOCK_PROTO,
@@ -107,11 +109,12 @@ impl Ramdisk {
 
     pub fn handle_io(&mut self) -> Result<(), Error> {
         loop {
-            let sqe = if let Some(ref server) = self.ring { server.next_request() } else { None };
+            let sqe =
+                if let Some(ref mut server) = self.ring { server.next_request() } else { None };
 
             if let Some(sqe) = sqe {
                 let res_val = self.process_sqe(&sqe);
-                if let Some(ref server) = self.ring {
+                if let Some(ref mut server) = self.ring {
                     server.complete(sqe.user_data, res_val)?;
                 }
             } else {
@@ -122,6 +125,15 @@ impl Ramdisk {
     }
 
     fn process_sqe(&mut self, sqe: &IoUringSqe) -> i32 {
+        let block_size = self.block_size();
+        if sqe.off % block_size as u64 != 0 || sqe.len % block_size != 0 {
+            error!(
+                "Ramdisk: request not aligned to block size ({}): offset={:#x}, len={}",
+                block_size, sqe.off, sqe.len
+            );
+            return -(Error::InvalidArgs as i32);
+        }
+
         let offset = sqe.off;
         let len = sqe.len as usize;
         let addr = if let Some(ref shm) = self.buffer {
@@ -133,7 +145,7 @@ impl Ramdisk {
             if (sqe.addr as usize) < client_vaddr
                 || (sqe.addr as usize) + len > client_vaddr + buffer_size
             {
-                log!(
+                error!(
                     "Error: Client address {:#x} out of SHM boundary [{:#x}, {:#x})",
                     sqe.addr,
                     client_vaddr,
@@ -159,7 +171,7 @@ impl Ramdisk {
         }
 
         match sqe.opcode {
-            IORING_OP_READ => {
+            IOURING_OP_READ => {
                 unsafe {
                     core::ptr::copy_nonoverlapping(
                         self.data.as_ptr().add(offset as usize),
@@ -169,7 +181,7 @@ impl Ramdisk {
                 }
                 len as i32
             }
-            IORING_OP_WRITE => {
+            IOURING_OP_WRITE => {
                 unsafe {
                     core::ptr::copy_nonoverlapping(
                         addr,
@@ -179,7 +191,7 @@ impl Ramdisk {
                 }
                 len as i32
             }
-            IORING_OP_SYNC => 0,
+            IOURING_OP_SYNC => 0,
             _ => -(glenda::error::Error::NotSupported as i32),
         }
     }
@@ -213,11 +225,9 @@ impl<'a> RamdiskService<'a> {
 impl<'a> SystemService for RamdiskService<'a> {
     fn init(&mut self) -> Result<(), Error> {
         log!("Driver init...");
-        let utcb = unsafe { UTCB::new() };
 
-        // 1. Get MMIO Cap (backing store)
-        utcb.set_recv_window(MMIO_SLOT);
-        let (mmio, paddr, size) = self.dev.get_mmio(Badge::null(), 0)?;
+        // 1. Get MMIO Cap (backing store)=
+        let (mmio, paddr, size) = self.dev.get_mmio(Badge::null(), 0, MMIO_SLOT)?;
         log!("Got memory region: paddr={:#x}, size={:#x}", paddr, size);
 
         // 2. Map MMIO
@@ -225,7 +235,8 @@ impl<'a> SystemService for RamdiskService<'a> {
 
         // 3. Init hardware (ramdisk logic)
         let data = unsafe { core::slice::from_raw_parts_mut(MMIO_VA as *mut u8, size) };
-        let ramdisk = Ramdisk::new(data);
+        let mut ramdisk = Ramdisk::new(data);
+        ramdisk.set_block_size(4096);
         log!(
             "Initialized Ramdisk with {} blocks ({} bytes each)",
             ramdisk.capacity(),
@@ -260,6 +271,7 @@ impl<'a> SystemService for RamdiskService<'a> {
         while self.running {
             let mut utcb = unsafe { UTCB::new() };
             utcb.clear();
+            let _ = CSPACE_CAP.delete(RECV_SLOT);
             utcb.set_reply_window(self.reply.cap());
             utcb.set_recv_window(RECV_SLOT);
 
@@ -309,23 +321,31 @@ impl<'a> SystemService for RamdiskService<'a> {
                 handle_call(u, |_| Ok(s.ramdisk.as_ref().unwrap().block_size() as usize))
             },
             (BLOCK_PROTO, glenda_drivers::protocol::block::SETUP_BUFFER) => |s: &mut Self, u: &mut UTCB| {
-                handle_call(u, |u| {
-                    let client_vaddr = u.get_mr(0);
-                    let size = u.get_mr(1);
-                    let paddr = u.get_mr(2) as u64;
+                let recv_slot = s.recv;
+                let client_vaddr = u.get_mr(0);
+                let size = u.get_mr(1);
+                let paddr = u.get_mr(2) as u64;
+
+                // Move capabilities after reading registers
+                CSPACE_CAP.move_cap(recv_slot, BUFFER_SLOT)?;
+
+                handle_call(u, |_| {
                     let res = unsafe { &mut *(s.res as *mut ResourceClient) };
-                    s.ramdisk.as_mut().unwrap().setup_buffer(res, client_vaddr, size, paddr, s.recv)?;
+                    s.ramdisk.as_mut().unwrap().setup_buffer(res, client_vaddr, size, paddr)?;
                     Ok(0usize)
                 })
             },
             (BLOCK_PROTO, glenda_drivers::protocol::block::SETUP_RING) => |s: &mut Self, u: &mut UTCB| {
-                handle_cap_call(u, |u| {
-                    let sq = u.get_mr(0) as u32;
-                    let cq = u.get_mr(1) as u32;
+                let recv_slot = s.recv;
+                let sq = u.get_mr(0) as u32;
+                let cq = u.get_mr(1) as u32;
+
+                // Move capabilities after reading registers
+                CSPACE_CAP.move_cap(recv_slot, NOTIFY_SLOT)?;
+
+                handle_cap_call(u, |_| {
                     // Transfer notification endpoint
                     let res = unsafe { &mut *(s.res as *mut ResourceClient) };
-                    // Move the cap from recv window to NOTIFY_SLOT
-                    CSPACE_CAP.move_cap(s.recv, NOTIFY_SLOT)?;
                     let notify_ep = Endpoint::from(NOTIFY_SLOT);
 
                     let ramdisk = s.ramdisk.as_mut().unwrap();

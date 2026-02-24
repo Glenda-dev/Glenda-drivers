@@ -1,8 +1,7 @@
 use glenda::cap::{Endpoint, Frame};
 use glenda::error::Error;
-use glenda::mem::io_uring;
+use glenda::io::uring::{self as io_uring, IoUringServer};
 use glenda::mem::shm::SharedMemory;
-use glenda_drivers::io_uring::IoRingServer;
 use virtio_common::consts::*;
 use virtio_common::queue::*;
 use virtio_common::VirtIOTransport;
@@ -32,7 +31,7 @@ pub struct VirtIOBlk {
     pub dma_vaddr: *mut u8,
     pub dma_paddr: u64,
     pub pending_info: [Option<(u64, u16)>; 64],
-    pub ring_server: Option<IoRingServer>,
+    pub ring_server: Option<IoUringServer>,
     pub endpoint: Option<Endpoint>,
     pub buffer: Option<SharedMemory>,
 }
@@ -66,7 +65,7 @@ impl VirtIOBlk {
         shm.set_client_vaddr(vaddr);
         shm.set_paddr(paddr);
         self.buffer = Some(shm);
-        log!("VirtIOBlk SHM setup: client_vaddr={:#x}, paddr={:#x}, size={}", vaddr, paddr, size);
+        log!("SHM setup: client_vaddr={:#x}, paddr={:#x}, size={}", vaddr, paddr, size);
         Ok(())
     }
 
@@ -145,8 +144,17 @@ impl VirtIOBlk {
     }
 
     fn submit_virtio_request(&mut self, sqe: io_uring::IoUringSqe) -> Result<(), Error> {
+        let block_size = self.block_size();
+        if sqe.off % block_size as u64 != 0 || sqe.len % block_size != 0 {
+            error!(
+                "VirtIO-Blk: request not aligned to block size ({}): offset={:#x}, len={}",
+                block_size, sqe.off, sqe.len
+            );
+            return Err(Error::InvalidArgs);
+        }
+
         log!(
-            "VirtIO-Blk: submit_virtio_request START: opcode={}, addr={:#x}, len={}",
+            "submit_virtio_request START: opcode={}, addr={:#x}, len={}",
             sqe.opcode,
             sqe.addr,
             sqe.len
@@ -168,8 +176,8 @@ impl VirtIOBlk {
         log!("req_ptr={:p}, status_ptr={:p}", req_ptr, status_ptr);
 
         let (virtio_type, is_write) = match sqe.opcode {
-            io_uring::IORING_OP_READ => (VIRTIO_BLK_T_IN, false),
-            io_uring::IORING_OP_WRITE => (VIRTIO_BLK_T_OUT, true),
+            io_uring::IOURING_OP_READ => (VIRTIO_BLK_T_IN, false),
+            io_uring::IOURING_OP_WRITE => (VIRTIO_BLK_T_OUT, true),
             _ => return Err(Error::NotSupported),
         };
 
@@ -280,7 +288,7 @@ impl VirtIOBlk {
                     let status_ptr = unsafe {
                         self.dma_vaddr.add(64 * core::mem::size_of::<VirtIOBlkReq>() + pos)
                     };
-                    let status = unsafe { *status_ptr };
+                    let status = unsafe { core::ptr::read_volatile(status_ptr) };
 
                     let result = if status == VIRTIO_BLK_S_OK { 0 } else { -1 };
 
@@ -292,7 +300,7 @@ impl VirtIOBlk {
         }
     }
 
-    pub fn set_ring_server(&mut self, server: IoRingServer) {
+    pub fn set_ring_server(&mut self, server: IoUringServer) {
         self.ring_server = Some(server);
     }
 
@@ -304,6 +312,6 @@ impl VirtIOBlk {
     }
 
     pub fn block_size(&self) -> u32 {
-        4096 // Default to 4KB for Glenda
+        512 // Standard 512-byte sectors for Glenda compatibility
     }
 }

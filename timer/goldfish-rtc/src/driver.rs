@@ -1,4 +1,4 @@
-use crate::layout::{IRQ_CAP, IRQ_SLOT, MMIO_CAP, MMIO_SLOT, MMIO_VA};
+use crate::layout::{IRQ_SLOT, MMIO_SLOT, MMIO_VA};
 use crate::GoldfishRtc;
 use crate::RtcService;
 use glenda::error::Error;
@@ -12,20 +12,20 @@ impl DriverService for RtcService<'_> {
         let utcb = unsafe { UTCB::new() };
 
         // 1. Get MMIO Cap
-        utcb.set_recv_window(MMIO_SLOT);
-        let _ = self.dev.get_mmio(Badge::null(), 0)?;
+        let (mmio, pa, size) = self.dev.get_mmio(Badge::null(), 0, MMIO_SLOT)?;
+        log!("Got MMIO cap: addr={:#x}, size={:#x}", pa, size);
 
         // 2. Map MMIO
-        self.res.mmap(Badge::null(), MMIO_CAP, MMIO_VA, 0x1000)?;
+        self.res.mmap(Badge::null(), mmio, MMIO_VA, 0x1000)?;
 
         // 3. Get IRQ Cap
         utcb.set_recv_window(IRQ_SLOT);
-        let _ = self.dev.get_irq(Badge::null(), 0)?;
+        let irq = self.dev.get_irq(Badge::null(), 0, IRQ_SLOT)?;
 
         // 4. Configure Interrupt
-        IRQ_CAP.set_notification(self.endpoint)?;
-        IRQ_CAP.set_priority(1)?;
-        IRQ_CAP.ack()?;
+        irq.set_notification(self.endpoint)?;
+        irq.set_priority(1)?;
+        irq.ack()?;
 
         // 5. Init Hardware
         let rtc = GoldfishRtc::new(MMIO_VA);

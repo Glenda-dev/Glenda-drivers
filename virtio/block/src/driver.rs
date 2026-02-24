@@ -6,7 +6,7 @@ use core::ptr::NonNull;
 use glenda::arch::mem::PGSIZE;
 use glenda::error::Error;
 use glenda::interface::{DeviceService, MemoryService, ResourceService};
-use glenda::ipc::{Badge, UTCB};
+use glenda::ipc::Badge;
 use glenda::protocol::device::LogicDeviceDesc;
 use glenda::utils::manager::CSpaceService;
 use glenda_drivers::interface::DriverService;
@@ -15,19 +15,14 @@ use virtio_common::VirtIOTransport;
 impl DriverService for BlockService<'_> {
     fn init(&mut self) -> Result<(), Error> {
         log!("Driver init...");
-        let utcb = unsafe { UTCB::new() };
-        // 1. Get MMIO Cap
-        utcb.set_recv_window(MMIO_SLOT);
-        let (mmio, pa, size) = self.dev.get_mmio(Badge::null(), 0)?;
+        let (mmio, pa, size) = self.dev.get_mmio(Badge::null(), 0, MMIO_SLOT)?;
         log!("Got MMIO cap: addr={:#x}, size={:#x}", pa, size);
 
         // 2. Map MMIO
-        self.res.mmap(Badge::null(), mmio, MMIO_VA, 0x1000)?;
+        self.res.mmap(Badge::null(), mmio, MMIO_VA, PGSIZE)?;
         glenda::arch::sync::fence();
 
-        // 3. Get IRQ Cap
-        utcb.set_recv_window(IRQ_SLOT);
-        let irq_handler = self.dev.get_irq(Badge::null(), 0)?;
+        let irq_handler = self.dev.get_irq(Badge::null(), 0, IRQ_SLOT)?;
         log!("Got IRQ cap: {:?}", irq_handler);
 
         // 4. Configure Interrupt
@@ -39,6 +34,7 @@ impl DriverService for BlockService<'_> {
             glenda::cap::Rights::ALL,
         )?;
         irq_handler.set_notification(glenda::cap::Endpoint::from(irq_notify_slot))?;
+        irq_handler.set_priority(1)?;
         self.irq = Some(irq_handler);
 
         // 5. Init Hardware / Construct VirtIOBlk
@@ -72,7 +68,6 @@ impl DriverService for BlockService<'_> {
             badge: None,
         };
         self.dev.register_logic(Badge::null(), desc, self.endpoint.cap())?;
-
         Ok(())
     }
 

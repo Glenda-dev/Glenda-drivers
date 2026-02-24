@@ -1,8 +1,7 @@
 use core::ptr::NonNull;
 use glenda::cap::{Endpoint, Frame};
-use glenda::mem::io_uring;
+use glenda::io::uring::{self as io_uring, IoUringServer};
 use glenda::mem::shm::SharedMemory;
-use glenda_drivers::io_uring::IoRingServer;
 use virtio_common::consts::*;
 use virtio_common::queue::{Descriptor, VirtQueue, DESC_F_WRITE};
 use virtio_common::{Result, VirtIOError, VirtIOTransport};
@@ -17,7 +16,7 @@ pub struct VirtIONet {
     pub tx_queue: Option<VirtQueue>,
     pub pending_rx: [Option<(u64, u16)>; 128],
     pub pending_tx: [Option<(u64, u16)>; 128],
-    pub ring_server: Option<IoRingServer>,
+    pub ring_server: Option<IoUringServer>,
     pub endpoint: Option<Endpoint>,
     pub buffer: Option<SharedMemory>,
 }
@@ -95,7 +94,7 @@ impl VirtIONet {
     pub fn mac(&self) -> [u8; 6] {
         self.mac
     }
-    pub fn set_ring_server(&mut self, server: IoRingServer) {
+    pub fn set_ring_server(&mut self, server: IoUringServer) {
         self.ring_server = Some(server);
     }
     pub fn set_endpoint(&mut self, endpoint: Endpoint) {
@@ -122,8 +121,8 @@ impl VirtIONet {
         for i in 0..count {
             let sqe = sqes[i];
             let res = match sqe.opcode {
-                io_uring::IORING_OP_READ => self.submit(0, sqe),
-                io_uring::IORING_OP_WRITE => self.submit(1, sqe),
+                io_uring::IOURING_OP_READ => self.submit(0, sqe),
+                io_uring::IOURING_OP_WRITE => self.submit(1, sqe),
                 _ => Err(VirtIOError::DeviceNotFound),
             };
             if res.is_err() {

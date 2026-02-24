@@ -4,13 +4,12 @@ use glenda::cap::{CapPtr, Endpoint, Frame, IrqHandler, Reply};
 use glenda::client::{DeviceClient, ResourceClient};
 use glenda::error::Error;
 use glenda::interface::{MemoryService, ResourceService, SystemService};
+use glenda::io::uring::{IoUringBuffer as IoUring, IoUringServer};
 use glenda::ipc::server::{handle_call, handle_cap_call, handle_notify};
 use glenda::ipc::{Badge, UTCB};
-use glenda::mem::shm::SharedMemory;
 use glenda::utils::manager::{CSpaceManager, CSpaceService};
 use glenda_drivers::interface::BlockDriver;
 use glenda_drivers::interface::DriverService;
-use glenda_drivers::io_uring::{IoRing, IoRingServer};
 use glenda_drivers::protocol::{block, BLOCK_PROTO};
 
 pub struct BlockService<'a> {
@@ -70,10 +69,10 @@ impl<'a> BlockDriver for BlockService<'a> {
         self.res.mmap(Badge::null(), frame.clone(), RING_VA, glenda::arch::mem::PGSIZE)?;
         glenda::arch::sync::fence();
 
-        let shm = SharedMemory::from_frame(frame.clone(), RING_VA, glenda::arch::mem::PGSIZE);
-
-        let ring = IoRing::new(shm, sq_entries, cq_entries)?;
-        let mut server = IoRingServer::new(ring);
+        let ring = unsafe {
+            IoUring::new(RING_VA as *mut u8, glenda::arch::mem::PGSIZE, sq_entries, cq_entries)
+        };
+        let mut server = IoUringServer::new(ring);
 
         server.set_client_notify(notify_ep);
         server.set_notify_tag(glenda::ipc::MsgTag::new(
@@ -121,12 +120,13 @@ impl<'a> SystemService for BlockService<'a> {
     fn run(&mut self) -> Result<(), Error> {
         let mut utcb = unsafe { UTCB::new() };
         loop {
+            let _ = self.cspace_mgr.root().delete(self.recv);
             utcb.clear();
             utcb.set_reply_window(self.reply_cap.cap());
             utcb.set_recv_window(self.recv);
 
             if let Err(e) = self.endpoint.recv(&mut utcb) {
-                glenda::println!("BlockService recv error: {:?}", e);
+                error!("Recv error: {:?}", e);
                 continue;
             }
             match self.dispatch(&mut utcb) {
@@ -137,7 +137,7 @@ impl<'a> SystemService for BlockService<'a> {
                     // Successfully handled, but no reply needed (e.g., notification)
                 }
                 Err(e) => {
-                    glenda::println!("BlockService dispatch error: {:?}", e);
+                    error!("Dispatch error: {:?}", e);
                     utcb.set_msg_tag(glenda::ipc::MsgTag::err());
                     utcb.set_mr(0, e as usize);
                     let _ = self.reply(&mut utcb);
@@ -189,28 +189,33 @@ impl<'a> SystemService for BlockService<'a> {
                 handle_call(u, |_| Ok(s.block_size() as usize))
             },
             (BLOCK_PROTO, block::SETUP_BUFFER) => |s: &mut Self, u: &mut UTCB| {
-                handle_call(u, |u| {
-                    let vaddr = u.get_mr(0);
-                    let size = u.get_mr(1);
-                    let paddr = u.get_mr(2) as u64;
-                    // Move the cap from recv window to a temporary slot
-                    let slot = s.cspace_mgr.alloc(s.res)?;
-                    s.cspace_mgr.root().move_cap(s.recv, slot)?;
+                let recv_slot = s.recv;
+                let slot = s.cspace_mgr.alloc(s.res)?;
+                // Read args into local variables before move_cap
+                let vaddr = u.get_mr(0);
+                let size = u.get_mr(1);
+                let paddr = u.get_mr(2) as u64;
+                
+                s.cspace_mgr.root().move_cap(recv_slot, slot)?;
+
+                handle_call(u, |_u| {
                     let frame = Frame::from(slot);
                     s.setup_shm(frame, vaddr, paddr, size)?;
                     Ok(0usize)
                 })
             },
             (BLOCK_PROTO, block::SETUP_RING) => |s: &mut Self, u: &mut UTCB| {
-                 handle_cap_call(u, |u| {
-                    let sq = u.get_mr(0) as u32;
-                    let cq = u.get_mr(1) as u32;
+                 let recv_slot = s.recv;
+                 let slot = s.cspace_mgr.alloc(s.res)?;
+                 // Read args into local variables before move_cap
+                 let sq = u.get_mr(0) as u32;
+                 let cq = u.get_mr(1) as u32;
 
+                 s.cspace_mgr.root().move_cap(recv_slot, slot)?;
+
+                 handle_cap_call(u, |_u| {
                     // The client passed its notification endpoint in the UTCB.
-                    // It was placed in our recv_window (s.recv).
-                    // We need to move it to a permanent slot.
-                    let slot = s.cspace_mgr.alloc(s.res)?;
-                    s.cspace_mgr.root().move_cap(s.recv, slot)?;
+                    // It was moved to slot.
                     let notify_ep = Endpoint::from(slot);
 
                     let frame = s.setup_ring(sq, cq, notify_ep, CapPtr::null())?;

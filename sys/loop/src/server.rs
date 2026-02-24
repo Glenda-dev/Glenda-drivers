@@ -14,39 +14,6 @@ impl BadgedFileClient {
         Self { endpoint, badge }
     }
 
-    /*
-    pub fn read(&mut self, offset: u64, buf: &mut [u8]) -> Result<usize, Error> {
-        let mut utcb = unsafe { UTCB::new() };
-        let tag = MsgTag::new(FS_PROTO, fs::READ_SYNC, MsgFlags::NONE);
-        utcb.set_msg_tag(tag);
-
-        utcb.set_mr(1, buf.len());
-        utcb.set_mr(2, offset as usize);
-        utcb.set_mr(3, self.badge);
-
-        self.endpoint.call(&mut utcb)?;
-
-        let read_len = utcb.get_mr(0);
-        let data = &utcb.buffer()[..read_len];
-        buf[..read_len].copy_from_slice(data);
-        Ok(read_len)
-    }
-
-    pub fn write(&mut self, offset: u64, buf: &[u8]) -> Result<usize, Error> {
-        let mut utcb = unsafe { UTCB::new() };
-        let tag = MsgTag::new(FS_PROTO, fs::WRITE_SYNC, MsgFlags::NONE);
-        utcb.set_msg_tag(tag);
-
-        utcb.set_mr(0, offset as usize);
-        utcb.set_mr(1, buf.len());
-        utcb.buffer_mut()[..buf.len()].copy_from_slice(buf);
-        utcb.set_mr(3, self.badge);
-
-        self.endpoint.call(&mut utcb)?;
-        Ok(utcb.get_mr(0))
-    }
-    */
-
     pub fn stat(&self) -> Result<glenda::protocol::fs::Stat, Error> {
         let mut utcb = unsafe { UTCB::new() };
         let tag = MsgTag::new(FS_PROTO, fs::STAT, MsgFlags::NONE);

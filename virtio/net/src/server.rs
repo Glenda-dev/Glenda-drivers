@@ -1,4 +1,6 @@
+use crate::layout::SHM_VA;
 use crate::net::VirtIONet;
+use glenda::arch::mem::PGSIZE;
 use glenda::cap::{CapPtr, Endpoint, Frame, Reply};
 use glenda::client::{DeviceClient, ResourceClient};
 use glenda::error::Error;
@@ -93,10 +95,7 @@ impl<'a> NetDriver for NetService<'a> {
         paddr: u64,
         size: usize,
     ) -> Result<(), Error> {
-        // Map SHM frame to local space (SHM_VA)
-        use glenda::cap::VSPACE_CAP;
-        use glenda::mem::Perms;
-        VSPACE_CAP.map(frame, crate::layout::SHM_VA, Perms::READ | Perms::WRITE)?;
+        self.res.mmap(Badge::null(), frame, SHM_VA, size / PGSIZE)?;
 
         if let Some(net) = self.net.as_mut() {
             // Note: net-internal shm will use local SHM_VA for access

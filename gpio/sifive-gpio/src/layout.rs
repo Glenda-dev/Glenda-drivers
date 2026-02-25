@@ -9,3 +9,6 @@ pub const IRQ_CAP: IrqHandler = IrqHandler::from(IRQ_SLOT);
 
 pub const DEVICE_SLOT: CapPtr = CapPtr::from(14);
 pub const DEVICE_CAP: Endpoint = Endpoint::from(DEVICE_SLOT);
+
+pub const IRQ_EP_SLOT: CapPtr = CapPtr::from(15);
+pub const IRQ_EP: Endpoint = Endpoint::from(IRQ_EP_SLOT);

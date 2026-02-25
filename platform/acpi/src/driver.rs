@@ -5,11 +5,11 @@ use alloc::vec::Vec;
 use glenda::cap::{CapPtr, Endpoint, Reply};
 use glenda::client::{DeviceClient, ResourceClient};
 use glenda::error::Error;
-use glenda_drivers::interface::BusDriver;
 use glenda::interface::DeviceService;
-use glenda_drivers::interface::DriverService;
 use glenda::ipc::Badge;
 use glenda::protocol::device::DeviceDescNode;
+use glenda_drivers::interface::BusDriver;
+use glenda_drivers::interface::DriverService;
 
 pub struct AcpiDriver<'a> {
     pub endpoint: Endpoint,
@@ -47,7 +47,7 @@ impl<'a> BusDriver for AcpiDriver<'a> {
         // Get RSDP address via get_mmio
         let utcb = unsafe { glenda::ipc::UTCB::new() };
         utcb.set_recv_window(BOOTINFO_FRAME_SLOT); // Use temporary slot
-        let (_, rsdp_addr, _) = self.dev.get_mmio(Badge::null(), 0)?;
+        let (_, rsdp_addr, _) = self.dev.get_mmio(Badge::null(), 0, BOOTINFO_FRAME_SLOT)?;
         log!("RSDP Address: {:#x}", rsdp_addr);
 
         let mut ctx = DriverContext {

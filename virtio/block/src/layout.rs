@@ -12,6 +12,7 @@ pub const MMIO_CAP: Frame = Frame::from(MMIO_SLOT);
 pub const IRQ_CAP: IrqHandler = IrqHandler::from(IRQ_SLOT);
 pub const DMA_CAP: Frame = Frame::from(DMA_SLOT);
 pub const RING_CAP: Frame = Frame::from(RING_SLOT);
+pub const IRQ_NOTIFY_CAP: Endpoint = Endpoint::from(IRQ_NOTIFY_SLOT);
 
 pub const MMIO_VA: usize = 0x4000_0000;
 pub const DMA_VA: usize = 0x5000_0000;

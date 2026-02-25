@@ -8,7 +8,7 @@ pub const ECAM_FRAME_SLOT_BASE: CapPtr = CapPtr::from(20);
 
 // Capabilities
 pub const DEVICE_CAP: Endpoint = Endpoint::from(DEVICE_SLOT);
-pub const MMIO_CAP: glenda::cap::Mmio = glenda::cap::Mmio::from(MMIO_SLOT);
+pub const MMIO_CAP: glenda::cap::Frame = glenda::cap::Frame::from(MMIO_SLOT);
 
 // Virtual Addresses
 pub const ECAM_VA_BASE: usize = 0x4000_0000;

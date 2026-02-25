@@ -1,14 +1,12 @@
-pub use crate::layout::{DTB_FRAME_SLOT, MAP_VA, MMIO_CAP, MMIO_SLOT};
+pub use crate::layout::{MAP_VA, MMIO_SLOT};
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
-use glenda::arch::mem::PGSIZE;
-use glenda::cap::{CapPtr, Endpoint, Frame, Reply};
+use glenda::cap::{CapPtr, Endpoint, Reply};
 use glenda::client::{DeviceClient, ResourceClient};
 use glenda::error::Error;
 use glenda::interface::{DeviceService, MemoryService};
 use glenda::ipc::Badge;
 use glenda::protocol::device::{DeviceDesc, DeviceDescNode, MMIORegion};
-use glenda::utils::align::align_up;
 use glenda_drivers::interface::DriverService;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -116,13 +114,9 @@ impl DtbDriver {
 impl DriverService for DtbDriver {
     fn init(&mut self) -> Result<(), Error> {
         // 1. Get DTB MMIO from Device Manager
-        let (mmio_cap, fdt_addr, fdt_size) =
+        let (fdt_cap, fdt_addr, fdt_size) =
             self.dev_client.get_mmio(Badge::null(), 0, MMIO_SLOT)?;
-        log!("Got DTB MMIO: cap={:?}, addr={:#x}, size={:#x}", mmio_cap, fdt_addr, fdt_size);
-
-        let pages = align_up(fdt_size, PGSIZE) / PGSIZE;
-        MMIO_CAP.get_frame(fdt_addr, pages, DTB_FRAME_SLOT)?;
-        let fdt_cap = Frame::from(DTB_FRAME_SLOT);
+        log!("Got DTB MMIO: cap={:?}, addr={:#x}, size={:#x}", fdt_cap, fdt_addr, fdt_size);
 
         // 2. Map DTB
         self.res_client.mmap(Badge::null(), fdt_cap, MAP_VA, fdt_size)?;

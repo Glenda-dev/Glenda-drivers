@@ -1,31 +1,32 @@
-use crate::layout::{IRQ_CAP, IRQ_SLOT, MMIO_CAP, MMIO_SLOT, MMIO_VA};
+use crate::layout::{IRQ_EP, IRQ_EP_SLOT, IRQ_SLOT, MMIO_SLOT, MMIO_VA};
 use crate::GpioService;
 use crate::SiFiveGpio;
+use glenda::cap::{Rights, CSPACE_CAP};
 use glenda::error::Error;
 use glenda::interface::{DeviceService, MemoryService};
-use glenda::ipc::{Badge, UTCB};
+use glenda::ipc::Badge;
 use glenda_drivers::interface::DriverService;
 
 impl DriverService for GpioService<'_> {
     fn init(&mut self) -> Result<(), Error> {
         log!("SiFive GPIO Driver init...");
-        let utcb = unsafe { UTCB::new() };
 
         // 1. Get MMIO Cap
-        utcb.set_recv_window(MMIO_SLOT);
-        let _ = self.dev.get_mmio(Badge::null())?;
+        let (mmio, _, _) = self.dev.get_mmio(Badge::null(), 0, MMIO_SLOT)?;
 
         // 2. Map MMIO
-        self.res.mmap(Badge::null(), MMIO_CAP, MMIO_VA, 0x1000)?;
+        self.res.mmap(Badge::null(), mmio, MMIO_VA, 0x1000)?;
 
         // 3. Get IRQ Cap
-        utcb.set_recv_window(IRQ_SLOT);
-        let _ = self.dev.get_irq(Badge::null())?;
+        let irq_badge = Badge::new(1);
+        let irq_handler = self.dev.get_irq(Badge::null(), 0, IRQ_SLOT)?;
+
+        // Mint a badged endpoint for IRQ notification
+        CSPACE_CAP.mint(self.endpoint.cap(), IRQ_EP_SLOT, irq_badge, Rights::ALL)?;
 
         // 4. Configure Interrupt
-        IRQ_CAP.set_notification(self.endpoint)?;
-        IRQ_CAP.set_priority(1)?;
-        IRQ_CAP.ack()?;
+        irq_handler.set_notification(IRQ_EP)?;
+        irq_handler.ack()?;
 
         // 5. Init Hardware
         self.gpio = Some(SiFiveGpio::new(MMIO_VA));

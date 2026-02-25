@@ -1,14 +1,16 @@
-use crate::layout::{DMA_SLOT, DMA_VA, IRQ_SLOT, MMIO_SLOT, MMIO_VA};
+use crate::layout::{
+    DMA_SLOT, DMA_VA, IRQ_NOTIFY_CAP, IRQ_NOTIFY_SLOT, IRQ_SLOT, MMIO_SLOT, MMIO_VA,
+};
 use crate::BlockService;
 use crate::VirtIOBlk;
 use alloc::string::String;
 use core::ptr::NonNull;
 use glenda::arch::mem::PGSIZE;
+use glenda::cap::{Rights, CSPACE_CAP};
 use glenda::error::Error;
 use glenda::interface::{DeviceService, MemoryService, ResourceService};
 use glenda::ipc::Badge;
 use glenda::protocol::device::LogicDeviceDesc;
-use glenda::utils::manager::CSpaceService;
 use glenda_drivers::interface::DriverService;
 use virtio_common::VirtIOTransport;
 
@@ -22,19 +24,15 @@ impl DriverService for BlockService<'_> {
         self.res.mmap(Badge::null(), mmio, MMIO_VA, PGSIZE)?;
         glenda::arch::sync::fence();
 
+        let irq_badge = Badge::new(1);
         let irq_handler = self.dev.get_irq(Badge::null(), 0, IRQ_SLOT)?;
         log!("Got IRQ cap: {:?}", irq_handler);
 
+        // Mint a badged endpoint for IRQ notification
+        CSPACE_CAP.mint(self.endpoint.cap(), IRQ_NOTIFY_SLOT, irq_badge, Rights::ALL)?;
+
         // 4. Configure Interrupt
-        let irq_notify_slot = self.cspace_mgr.alloc(self.res)?;
-        self.cspace_mgr.root().mint(
-            self.endpoint.cap(),
-            irq_notify_slot,
-            crate::server::IRQ_BADGE,
-            glenda::cap::Rights::ALL,
-        )?;
-        irq_handler.set_notification(glenda::cap::Endpoint::from(irq_notify_slot))?;
-        irq_handler.set_priority(1)?;
+        irq_handler.set_notification(IRQ_NOTIFY_CAP)?;
         self.irq = Some(irq_handler);
 
         // 5. Init Hardware / Construct VirtIOBlk

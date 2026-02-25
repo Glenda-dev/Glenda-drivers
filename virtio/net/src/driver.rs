@@ -1,6 +1,7 @@
-use crate::layout::{DMA_SLOT, DMA_VA, IRQ_SLOT, MMIO_SLOT, MMIO_VA};
+use crate::layout::{DMA_SLOT, DMA_VA, IRQ_EP, IRQ_EP_SLOT, IRQ_SLOT, MMIO_SLOT, MMIO_VA};
 use crate::net::VirtIONet;
 use crate::NetService;
+use glenda::cap::{Rights, CSPACE_CAP};
 use glenda::error::Error;
 use glenda::interface::{DeviceService, MemoryService, ResourceService};
 use glenda::ipc::Badge;
@@ -15,9 +16,13 @@ impl DriverService for NetService<'_> {
 
         self.res.mmap(Badge::null(), mmio, MMIO_VA, 0x1000)?;
 
+        let irq_badge = Badge::new(1);
         let irq = self.dev.get_irq(Badge::null(), 0, IRQ_SLOT)?;
         log!("Got IRQ cap: {:?}", irq);
-        irq.set_notification(self.endpoint)?;
+
+        // Mint a badged endpoint for IRQ notification
+        CSPACE_CAP.mint(self.endpoint.cap(), IRQ_EP_SLOT, irq_badge, Rights::ALL)?;
+        irq.set_notification(IRQ_EP)?;
 
         let (paddr, frame) = self.res.dma_alloc(Badge::null(), 4, DMA_SLOT)?;
         self.res.mmap(Badge::null(), frame, DMA_VA, 4096 * 4)?;

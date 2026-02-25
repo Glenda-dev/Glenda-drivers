@@ -1,6 +1,7 @@
-use crate::layout::{IRQ_CAP, IRQ_SLOT, MMIO_SLOT, MMIO_VA};
+use crate::layout::{IRQ_CAP, IRQ_EP, IRQ_EP_SLOT, IRQ_SLOT, MMIO_SLOT, MMIO_VA};
 use crate::Ns16550a;
 use crate::UartService;
+use glenda::cap::{Rights, CSPACE_CAP};
 use glenda::error::Error;
 use glenda::interface::{DeviceService, MemoryService};
 use glenda::ipc::Badge;
@@ -14,14 +15,16 @@ impl<'a> DriverService for UartService<'a> {
         log!("Got MMIO cap: addr={:#x}, size={:#x}", pa, size);
         // 2. Map MMIO
         self.res.mmap(Badge::null(), mmio, MMIO_VA, 0x1000)?;
+        let irq_badge = Badge::new(1);
         let irq_handler = self.dev.get_irq(Badge::null(), 0, IRQ_SLOT)?;
-        log!("Setting notification to {:?}", self.endpoint);
+
+        // 3. Mint a badged endpoint for IRQ notification
+        CSPACE_CAP.mint(self.endpoint.cap(), IRQ_EP_SLOT, irq_badge, Rights::ALL)?;
+
+        log!("Setting notification to {:?}", IRQ_EP);
         // 4. Configure Interrupt
-        // We use our endpoint to receive interrupts.
-        // Note: Ideally we should use a badged endpoint to distinguish IRQ from IPC.
-        // But for now we assume direct notification.
-        irq_handler.set_notification(self.endpoint)?;
-        irq_handler.set_priority(1)?;
+        // We use our badged endpoint to receive interrupts.
+        irq_handler.set_notification(IRQ_EP)?;
 
         // 5. Init Hardware
         // IRQ is enabled by `init_hw`.

@@ -8,9 +8,9 @@ use glenda::interface::{MemoryService, ResourceService, SystemService};
 use glenda::io::uring::{IoUringBuffer as IoUring, IoUringServer};
 use glenda::ipc::server::{handle_call, handle_cap_call, handle_notify};
 use glenda::ipc::{Badge, UTCB};
-use glenda::protocol::device::net::MacAddress;
 use glenda::utils::manager::{CSpaceManager, CSpaceService};
 use glenda_drivers::interface::{DriverService, NetDriver};
+use glenda_drivers::protocol::net::MacAddress;
 use glenda_drivers::protocol::{net, NET_PROTO};
 
 pub struct NetService<'a> {

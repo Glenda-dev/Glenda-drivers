@@ -8,6 +8,7 @@ use glenda::interface::{DeviceService, MemoryService};
 use glenda::ipc::Badge;
 use glenda::protocol::device::{DeviceDesc, DeviceDescNode, MMIORegion};
 use glenda_drivers::interface::DriverService;
+use glenda_drivers::protocol::thermal;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PowerMethod {
@@ -23,7 +24,7 @@ pub struct DtbDriver {
     pub reply: Reply,
     pub recv: CapPtr,
     pub running: bool,
-    pub thermal_zones: glenda::protocol::device::thermal::ThermalZones,
+    pub thermal_zones: thermal::ThermalZones,
     pub thermal_base: Option<usize>,
 
     pub has_power_off: bool,
@@ -41,7 +42,7 @@ impl DtbDriver {
             reply: Reply::from(CapPtr::null()),
             recv: CapPtr::null(),
             running: false,
-            thermal_zones: glenda::protocol::device::thermal::ThermalZones::default(),
+            thermal_zones: thermal::ThermalZones::default(),
             thermal_base: None,
 
             has_power_off: false,
@@ -141,31 +142,25 @@ impl DriverService for DtbDriver {
                             .map(|p| p.as_usize().unwrap_or(0) as u32)
                             .unwrap_or(0);
                         let trip_type = match trip.property("type").and_then(|p| p.as_str()) {
-                            Some("passive") => glenda::protocol::device::thermal::TripType::Passive,
-                            Some("active") => glenda::protocol::device::thermal::TripType::Active,
-                            Some("hot") => glenda::protocol::device::thermal::TripType::Hot,
-                            Some("critical") => {
-                                glenda::protocol::device::thermal::TripType::Critical
-                            }
-                            _ => glenda::protocol::device::thermal::TripType::Passive,
+                            Some("passive") => thermal::TripType::Passive,
+                            Some("active") => thermal::TripType::Active,
+                            Some("hot") => thermal::TripType::Hot,
+                            Some("critical") => thermal::TripType::Critical,
+                            _ => thermal::TripType::Passive,
                         };
-                        trips.push(glenda::protocol::device::thermal::ThermalTrip {
-                            temp,
-                            hysteresis,
-                            trip_type,
-                        });
+                        trips.push(thermal::ThermalTrip { temp, hysteresis, trip_type });
                     }
                 }
 
                 let t_type = if name.contains("cpu") {
-                    glenda::protocol::device::thermal::ThermalType::Cpu
+                    thermal::ThermalType::Cpu
                 } else if name.contains("gpu") {
-                    glenda::protocol::device::thermal::ThermalType::Gpu
+                    thermal::ThermalType::Gpu
                 } else {
-                    glenda::protocol::device::thermal::ThermalType::Board
+                    thermal::ThermalType::Board
                 };
 
-                self.thermal_zones.zones.push(glenda::protocol::device::thermal::ThermalZoneInfo {
+                self.thermal_zones.zones.push(thermal::ThermalZoneInfo {
                     name,
                     thermal_type: t_type,
                     trips,

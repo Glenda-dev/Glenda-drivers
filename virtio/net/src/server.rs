@@ -2,7 +2,7 @@ use crate::net::VirtIONet;
 use glenda::cap::{CapPtr, Endpoint, Frame, Reply};
 use glenda::client::{DeviceClient, ResourceClient};
 use glenda::error::Error;
-use glenda::interface::{ResourceService, SystemService};
+use glenda::interface::{MemoryService, ResourceService, SystemService};
 use glenda::io::uring::{IoUringBuffer as IoUring, IoUringServer};
 use glenda::ipc::server::{handle_call, handle_cap_call, handle_notify};
 use glenda::ipc::{Badge, UTCB};
@@ -56,10 +56,24 @@ impl<'a> NetDriver for NetService<'a> {
     ) -> Result<Frame, Error> {
         let slot = self.cspace_mgr.alloc(self.res)?;
         // For 4 entries, we only need a few hundred bytes, so 1 page is plenty.
-        let (paddr, frame) = self.res.dma_alloc(Badge::null(), 1, slot)?;
+        let (_, frame) = self.res.dma_alloc(Badge::null(), 1, slot)?;
+
+        // Map the DMA frame to our virtual address space
+        self.res.mmap(
+            Badge::null(),
+            frame.clone(),
+            crate::layout::RING_VA,
+            glenda::arch::mem::PGSIZE,
+        )?;
+        glenda::arch::sync::fence();
 
         let ring = unsafe {
-            IoUring::new(paddr as *mut u8, glenda::arch::mem::PGSIZE, sq_entries, cq_entries)
+            IoUring::new(
+                crate::layout::RING_VA as *mut u8,
+                glenda::arch::mem::PGSIZE,
+                sq_entries,
+                cq_entries,
+            )
         };
         let mut server = IoUringServer::new(ring);
 
@@ -79,11 +93,22 @@ impl<'a> NetDriver for NetService<'a> {
         paddr: u64,
         size: usize,
     ) -> Result<(), Error> {
+        // Map SHM frame to local space (SHM_VA)
+        use glenda::cap::VSPACE_CAP;
+        use glenda::mem::Perms;
+        VSPACE_CAP.map(frame, crate::layout::SHM_VA, Perms::READ | Perms::WRITE)?;
+
         if let Some(net) = self.net.as_mut() {
-            net.setup_shm(frame, vaddr, paddr, size)
+            // Note: net-internal shm will use local SHM_VA for access
+            // but keep the Gopher's vaddr as the client_vaddr to match incoming SQEs
+            net.setup_shm(frame, crate::layout::SHM_VA, paddr, size)?;
+            if let Some(shm) = net.buffer.as_mut() {
+                shm.set_client_vaddr(vaddr);
+            }
         } else {
-            Err(Error::NotInitialized)
+            return Err(Error::NotInitialized);
         }
+        Ok(())
     }
 }
 

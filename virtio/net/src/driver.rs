@@ -1,10 +1,12 @@
 use crate::layout::{DMA_SLOT, DMA_VA, IRQ_EP, IRQ_EP_SLOT, IRQ_SLOT, MMIO_SLOT, MMIO_VA};
 use crate::net::VirtIONet;
 use crate::NetService;
+use alloc::string::String;
 use glenda::cap::{Rights, CSPACE_CAP};
 use glenda::error::Error;
 use glenda::interface::{DeviceService, MemoryService, ResourceService};
 use glenda::ipc::Badge;
+use glenda::protocol::device::LogicDeviceDesc;
 use glenda_drivers::interface::DriverService;
 
 impl DriverService for NetService<'_> {
@@ -34,7 +36,18 @@ impl DriverService for NetService<'_> {
 
         self.net = Some(net);
 
-        log!("Initialized! MAC: {:02x?}", self.net.as_ref().unwrap().mac());
+        let mac = self.net.as_ref().unwrap().mac();
+        log!("Initialized! MAC: {:02x?}", mac);
+
+        // Register as logical network device with Unicorn
+        let desc = LogicDeviceDesc {
+            name: String::from("virtio-net"),
+            parent_name: String::from("root"),
+            dev_type: glenda::protocol::device::LogicDeviceType::Net,
+            badge: None,
+        };
+        self.dev.register_logic(Badge::null(), desc, self.endpoint.cap())?;
+
         Ok(())
     }
 

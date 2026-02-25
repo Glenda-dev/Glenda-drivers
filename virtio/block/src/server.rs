@@ -1,5 +1,5 @@
 use crate::blk::*;
-use crate::layout::RING_VA;
+use crate::layout::{IRQ_BADGE, RING_VA};
 use glenda::cap::{CapPtr, Endpoint, Frame, IrqHandler, Reply};
 use glenda::client::{DeviceClient, ResourceClient};
 use glenda::error::Error;
@@ -22,8 +22,6 @@ pub struct BlockService<'a> {
     pub res: &'a mut ResourceClient,
     pub cspace_mgr: &'a mut CSpaceManager,
 }
-
-pub const IRQ_BADGE: Badge = Badge::new(0x80);
 
 impl<'a> BlockService<'a> {
     pub fn new(
@@ -147,15 +145,25 @@ impl<'a> SystemService for BlockService<'a> {
             (glenda::protocol::KERNEL_PROTO, glenda::protocol::kernel::NOTIFY) => |s: &mut Self, u: &mut UTCB| {
                 handle_notify(u, |u| {
                     let badge = u.get_badge();
+                    let bits = badge.bits();
+
+                    // Determine flags
+                    let is_cq = bits & glenda::io::uring::NOTIFY_IO_URING_CQ != 0;
+                    let is_sq = bits & glenda::io::uring::NOTIFY_IO_URING_SQ != 0;
+                    let is_irq = bits & IRQ_BADGE != 0;
                     if let Some(blk) = s.blk.as_mut() {
-                        if (badge.bits() & IRQ_BADGE.bits()) != 0 {
+                        if is_irq {
                             blk.handle_irq();
                             if let Some(irq) = s.irq.as_ref() {
                                 irq.ack()?;
                             }
-                        } else {
+                        }
+                        if is_cq || is_sq {
                             blk.handle_ring();
                         }
+                    }
+                    else {
+                        error!("Device not initialized");
                     }
                     Ok(())
                 })

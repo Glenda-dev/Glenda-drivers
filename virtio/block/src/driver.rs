@@ -1,3 +1,4 @@
+use crate::layout::IRQ_BADGE;
 use crate::layout::{
     DMA_SLOT, DMA_VA, IRQ_NOTIFY_CAP, IRQ_NOTIFY_SLOT, IRQ_SLOT, MMIO_SLOT, MMIO_VA,
 };
@@ -23,13 +24,16 @@ impl DriverService for BlockService<'_> {
         // 2. Map MMIO
         self.res.mmap(Badge::null(), mmio, MMIO_VA, PGSIZE)?;
         glenda::arch::sync::fence();
-
-        let irq_badge = Badge::new(1);
         let irq_handler = self.dev.get_irq(Badge::null(), 0, IRQ_SLOT)?;
         log!("Got IRQ cap: {:?}", irq_handler);
 
         // Mint a badged endpoint for IRQ notification
-        CSPACE_CAP.mint(self.endpoint.cap(), IRQ_NOTIFY_SLOT, irq_badge, Rights::ALL)?;
+        CSPACE_CAP.mint(
+            self.endpoint.cap(),
+            IRQ_NOTIFY_SLOT,
+            Badge::new(IRQ_BADGE),
+            Rights::ALL,
+        )?;
 
         // 4. Configure Interrupt
         irq_handler.set_notification(IRQ_NOTIFY_CAP)?;

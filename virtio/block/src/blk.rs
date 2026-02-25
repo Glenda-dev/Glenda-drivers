@@ -147,18 +147,11 @@ impl VirtIOBlk {
         let block_size = self.block_size();
         if sqe.off % block_size as u64 != 0 || sqe.len % block_size != 0 {
             error!(
-                "VirtIO-Blk: request not aligned to block size ({}): offset={:#x}, len={}",
+                "Request not aligned to block size ({}): offset={:#x}, len={}",
                 block_size, sqe.off, sqe.len
             );
             return Err(Error::InvalidArgs);
         }
-
-        log!(
-            "submit_virtio_request START: opcode={}, addr={:#x}, len={}",
-            sqe.opcode,
-            sqe.addr,
-            sqe.len
-        );
         let queue = self.queue.as_mut().ok_or(Error::NotInitialized)?;
 
         let req_idx =

@@ -17,3 +17,5 @@ pub const IRQ_NOTIFY_CAP: Endpoint = Endpoint::from(IRQ_NOTIFY_SLOT);
 pub const MMIO_VA: usize = 0x4000_0000;
 pub const DMA_VA: usize = 0x5000_0000;
 pub const RING_VA: usize = 0x6000_0000;
+
+pub const IRQ_BADGE: usize = 1 << 33;

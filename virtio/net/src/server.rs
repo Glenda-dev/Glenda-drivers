@@ -1,6 +1,5 @@
 use crate::layout::SHM_VA;
 use crate::net::VirtIONet;
-use glenda::arch::mem::PGSIZE;
 use glenda::cap::{CapPtr, Endpoint, Frame, Reply};
 use glenda::client::{DeviceClient, ResourceClient};
 use glenda::error::Error;
@@ -95,7 +94,7 @@ impl<'a> NetDriver for NetService<'a> {
         paddr: u64,
         size: usize,
     ) -> Result<(), Error> {
-        self.res.mmap(Badge::null(), frame, SHM_VA, size / PGSIZE)?;
+        self.res.mmap(Badge::null(), frame, SHM_VA, size)?;
 
         if let Some(net) = self.net.as_mut() {
             // Note: net-internal shm will use local SHM_VA for access
@@ -178,7 +177,7 @@ impl<'a> SystemService for NetService<'a> {
                     for i in 0..6 {
                         u.set_mr(i, mac.octets[i] as usize);
                     }
-                    Ok(0usize)
+                    Ok(())
                 })
             },
             (NET_PROTO, net::SETUP_BUFFER) => |s: &mut Self, u: &mut UTCB| {
@@ -191,7 +190,7 @@ impl<'a> SystemService for NetService<'a> {
                     s.cspace_mgr.root().move_cap(s.recv, slot)?;
                     let frame = Frame::from(slot);
                     s.setup_shm(frame, vaddr, paddr, size)?;
-                    Ok(0usize)
+                    Ok(())
                 })
             },
             (NET_PROTO, net::SETUP_RING) => |s: &mut Self, u: &mut UTCB| {

@@ -5,6 +5,7 @@ use glenda::cap::{Rights, CSPACE_CAP};
 use glenda::error::Error;
 use glenda::interface::{DeviceService, MemoryService};
 use glenda::ipc::Badge;
+use glenda::protocol::device::{LogicDeviceDesc, LogicDeviceType};
 use glenda_drivers::interface::DriverService;
 
 impl DriverService for RtcService<'_> {
@@ -35,6 +36,16 @@ impl DriverService for RtcService<'_> {
         log!("Goldfish RTC initialized at {:#x}", MMIO_VA);
         log!("Current RTC time: {}", unix_time);
         self.rtc = Some(rtc);
+
+        // 6. Register Logic Device
+        let desc = LogicDeviceDesc {
+            name: "goldfish-rtc".into(),
+            dev_type: LogicDeviceType::Timer(1_000_000_000), // 1 GHz, ns precision
+            parent_name: "platform".into(),
+            badge: None,
+        };
+        self.dev.register_logic(Badge::null(), desc, self.endpoint.cap())?;
+        log!("Registered as Timer logical device");
 
         Ok(())
     }

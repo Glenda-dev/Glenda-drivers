@@ -135,7 +135,7 @@ impl<'a> SystemService for NetService<'a> {
             utcb.set_recv_window(self.recv);
 
             if let Err(e) = self.endpoint.recv(&mut utcb) {
-                log!("Recv error: {:?}", e);
+                error!("Recv error: {:?}", e);
                 continue;
             }
             match self.dispatch(&mut utcb) {
@@ -146,7 +146,7 @@ impl<'a> SystemService for NetService<'a> {
                     // Successfully handled, but no reply needed (e.g., notification)
                 }
                 Err(e) => {
-                    log!("Dispatch error: {:?}", e);
+                    error!("Dispatch error: {:?}", e);
                     utcb.set_msg_tag(glenda::ipc::MsgTag::err());
                     utcb.set_mr(0, e as usize);
                     let _ = self.reply(&mut utcb);

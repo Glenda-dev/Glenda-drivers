@@ -41,7 +41,7 @@ impl GoldfishRtc {
         let low = self.read_reg(TIMER_TIME_LOW) as u64;
         let high = self.read_reg(TIMER_TIME_HIGH) as u64;
         let nanos = (high << 32) | low;
-        nanos / 1_000_000_000
+        nanos
     }
 
     pub fn set_time(&mut self, timestamp: u64) -> Result<(), Error> {

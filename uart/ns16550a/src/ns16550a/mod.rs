@@ -5,7 +5,10 @@ mod utf8;
 
 use config::*;
 use consts::*;
-use glenda::cap::IrqHandler;
+use glenda::cap::{Frame, IrqHandler};
+use glenda::error::Error;
+use glenda::io::uring::IoUringServer;
+use glenda::mem::shm::SharedMemory;
 use glenda_drivers::interface::UartDriver;
 #[cfg(feature = "unicode")]
 use utf8::Utf8Decoder;
@@ -15,6 +18,8 @@ pub struct Ns16550a {
     pub irq: IrqHandler,
     #[cfg(feature = "unicode")]
     decoder: Utf8Decoder,
+    pub ring: Option<IoUringServer>,
+    pub shm: Option<SharedMemory>,
 }
 
 impl Ns16550a {
@@ -24,7 +29,26 @@ impl Ns16550a {
             irq,
             #[cfg(feature = "unicode")]
             decoder: Utf8Decoder::new(),
+            ring: None,
+            shm: None,
         }
+    }
+
+    pub fn set_ring_server(&mut self, ring: IoUringServer) {
+        self.ring = Some(ring);
+    }
+
+    pub fn setup_shm(
+        &mut self,
+        frame: Frame,
+        vaddr: usize,
+        paddr: u64,
+        size: usize,
+    ) -> Result<(), Error> {
+        let mut shm = SharedMemory::new(frame, vaddr, size);
+        shm.set_paddr(paddr);
+        self.shm = Some(shm);
+        Ok(())
     }
 
     pub unsafe fn read(&self, offset: usize) -> u8 {
@@ -96,6 +120,69 @@ impl Ns16550a {
             } else {
                 self.putchar(b);
             }
+        }
+    }
+
+    pub fn handle_async_io(&mut self) {
+        if let Some(mut ring) = self.ring.take() {
+            while let Some(sqe) = ring.next_request() {
+                match sqe.opcode {
+                    glenda::io::uring::IOURING_OP_WRITE => {
+                        let addr = sqe.addr;
+                        let len = sqe.len as usize;
+                        let user_data = sqe.user_data;
+
+                        // Use SHM if available, otherwise assume linear mapping (not safe but compatible)
+                        let buf = if let Some(shm) = &self.shm {
+                            // Convert client-side addr to server-side vaddr
+                            let server_vaddr = shm.vaddr() + (addr as usize - shm.client_vaddr());
+                            unsafe { core::slice::from_raw_parts(server_vaddr as *const u8, len) }
+                        } else {
+                            unsafe { core::slice::from_raw_parts(addr as *const u8, len) }
+                        };
+
+                        for &b in buf {
+                            self.putchar(b);
+                        }
+                        let _ = ring.complete(user_data, len as i32);
+                    }
+                    glenda::io::uring::IOURING_OP_READ => {
+                        // For UART, READ SQEs could be queued and completed when data arrives.
+                        // For now, let's just do a synchronous check.
+                        let addr = sqe.addr;
+                        let len = sqe.len as usize;
+                        let user_data = sqe.user_data;
+
+                        let mut count = 0;
+                        while count < len {
+                            if let Some(c) = self.getchar() {
+                                if let Some(shm) = &self.shm {
+                                    let server_vaddr =
+                                        shm.vaddr() + (addr as usize - shm.client_vaddr()) + count;
+                                    unsafe { *(server_vaddr as *mut u8) = c };
+                                } else {
+                                    unsafe { *((addr as usize + count) as *mut u8) = c };
+                                }
+                                count += 1;
+                            } else {
+                                break;
+                            }
+                        }
+
+                        if count > 0 {
+                            let _ = ring.complete(user_data, count as i32);
+                        } else {
+                            // If no data, we should probably re-queue or return 0.
+                            // To be truly async, we'd store the SQE and complete it in handle_irq.
+                            let _ = ring.complete(user_data, 0);
+                        }
+                    }
+                    _ => {
+                        let _ = ring.complete(sqe.user_data, -(Error::NotSupported as i32));
+                    }
+                }
+            }
+            self.ring = Some(ring);
         }
     }
 

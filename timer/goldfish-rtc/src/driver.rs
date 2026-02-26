@@ -40,7 +40,7 @@ impl DriverService for RtcService<'_> {
         // 6. Register Logic Device
         let desc = LogicDeviceDesc {
             name: "goldfish-rtc".into(),
-            dev_type: LogicDeviceType::Timer(1_000_000_000), // 1 GHz, ns precision
+            dev_type: LogicDeviceType::Timer,
             parent_name: "platform".into(),
             badge: None,
         };

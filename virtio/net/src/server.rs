@@ -40,15 +40,8 @@ impl<'a> NetService<'a> {
             recv: CapPtr::null(),
         }
     }
-}
 
-impl<'a> NetDriver for NetService<'a> {
-    fn mac_address(&self) -> MacAddress {
-        let octets = self.net.as_ref().map(|n| n.mac()).unwrap_or([0; 6]);
-        MacAddress { octets }
-    }
-
-    fn setup_ring(
+    pub fn setup_ring(
         &mut self,
         sq_entries: u32,
         cq_entries: u32,
@@ -87,7 +80,7 @@ impl<'a> NetDriver for NetService<'a> {
         Ok(frame)
     }
 
-    fn setup_shm(
+    pub fn setup_shm(
         &mut self,
         frame: Frame,
         vaddr: usize,
@@ -107,6 +100,13 @@ impl<'a> NetDriver for NetService<'a> {
             return Err(Error::NotInitialized);
         }
         Ok(())
+    }
+}
+
+impl<'a> NetDriver for NetService<'a> {
+    fn mac_address(&self) -> MacAddress {
+        let octets = self.net.as_ref().map(|n| n.mac()).unwrap_or([0; 6]);
+        MacAddress { octets }
     }
 }
 

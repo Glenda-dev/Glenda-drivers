@@ -8,7 +8,6 @@ use glenda::io::uring::{IoUringBuffer as IoUring, IoUringServer};
 use glenda::ipc::server::{handle_call, handle_cap_call, handle_notify};
 use glenda::ipc::{Badge, UTCB};
 use glenda::utils::manager::{CSpaceManager, CSpaceService};
-use glenda_drivers::interface::BlockDriver;
 use glenda_drivers::interface::DriverService;
 use glenda_drivers::protocol::{block, BLOCK_PROTO};
 
@@ -40,18 +39,8 @@ impl<'a> BlockService<'a> {
             cspace_mgr,
         }
     }
-}
 
-impl<'a> BlockDriver for BlockService<'a> {
-    fn capacity(&self) -> u64 {
-        self.blk.as_ref().map(|b| b.capacity()).unwrap_or(0)
-    }
-
-    fn block_size(&self) -> u32 {
-        self.blk.as_ref().map(|b| b.block_size()).unwrap_or(0)
-    }
-
-    fn setup_ring(
+    pub fn setup_ring(
         &mut self,
         sq_entries: u32,
         cq_entries: u32,
@@ -83,7 +72,7 @@ impl<'a> BlockDriver for BlockService<'a> {
         Ok(frame)
     }
 
-    fn setup_shm(
+    pub fn setup_shm(
         &mut self,
         frame: Frame,
         vaddr: usize,
@@ -95,6 +84,16 @@ impl<'a> BlockDriver for BlockService<'a> {
         } else {
             Err(Error::NotInitialized)
         }
+    }
+}
+
+impl<'a> BlockService<'a> {
+    pub fn capacity(&self) -> u64 {
+        self.blk.as_ref().map(|b| b.capacity()).unwrap_or(0)
+    }
+
+    pub fn block_size(&self) -> u32 {
+        self.blk.as_ref().map(|b| b.block_size()).unwrap_or(0)
     }
 }
 

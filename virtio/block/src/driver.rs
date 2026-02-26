@@ -66,7 +66,7 @@ impl DriverService for BlockService<'_> {
         let desc = LogicDeviceDesc {
             name: String::from("virtio-blk"),
             parent_name: String::from("root"),
-            dev_type: glenda::protocol::device::LogicDeviceType::RawBlock(cap * 512),
+            dev_type: glenda::protocol::device::LogicDeviceType::Block,
             badge: None,
         };
         self.dev.register_logic(Badge::null(), desc, self.endpoint.cap())?;

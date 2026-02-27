@@ -31,6 +31,16 @@ impl<'a> DriverService for UartService<'a> {
         let uart = Ns16550a::new(MMIO_VA, IRQ_CAP);
         uart.init_hw();
         self.uart = Some(uart);
+
+        // 6. Register logical device to Unicorn
+        let desc = glenda::protocol::device::LogicDeviceDesc {
+            name: alloc::string::String::from("ns16550a"),
+            dev_type: glenda::protocol::device::LogicDeviceType::Uart,
+            parent_name: alloc::string::String::from("ns16550a"),
+            badge: None,
+        };
+        self.dev.register_logic(Badge::null(), desc, self.endpoint.cap())?;
+
         log!("Driver initialized!");
         Ok(())
     }

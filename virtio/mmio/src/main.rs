@@ -50,5 +50,7 @@ fn main() -> usize {
             error!("Probe failed: {:?}", e);
         }
     }
+    // FIXME
+    let _ = glenda::cap::TCB_CAP.suspend();
     0
 }

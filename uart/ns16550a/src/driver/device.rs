@@ -17,4 +17,10 @@ impl<'a> UartDriver for UartService<'a> {
             uart.put_str(s);
         }
     }
+
+    fn set_baud_rate(&mut self, baud: u32) {
+        if let Some(uart) = self.uart.as_mut() {
+            uart.set_baud_rate(baud);
+        }
+    }
 }

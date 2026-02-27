@@ -107,6 +107,26 @@ impl<'a> SystemService for UartService<'a> {
                     }
                 })
             },
+            (protocol::UART_PROTO, protocol::uart::PUT_STR) => |s: &mut Self, u: &mut UTCB| {
+                handle_call(u, |u| {
+                    if let Some(uart) = s.uart.as_mut() {
+                        let len = u.get_mr(0);
+                        let s_bytes = unsafe { core::slice::from_raw_parts(u.mr_ptr(1) as *const u8, len) };
+                        if let Ok(s_str) = core::str::from_utf8(s_bytes) {
+                            uart.put_str(s_str);
+                        }
+                    }
+                    Ok(())
+                })
+            },
+            (protocol::UART_PROTO, protocol::uart::SET_BAUD_RATE) => |s: &mut Self, u: &mut UTCB| {
+                handle_call(u, |u| {
+                    if let Some(uart) = s.uart.as_mut() {
+                        uart.set_baud_rate(u.get_mr(0) as u32);
+                    }
+                    Ok(())
+                })
+            },
             (protocol::UART_PROTO, protocol::uart::SETUP_RING) => |s: &mut Self, u: &mut UTCB| {
                 let recv_slot = s.recv;
                 let slot = s.cspace.alloc(s.res)?;

@@ -62,7 +62,15 @@ impl Ns16550a {
     }
 
     pub fn init_hw(&self) {
-        let divisor = calculate_divisor(DEFAULT_BAUD_RATE);
+        self.set_baud_rate(DEFAULT_BAUD_RATE);
+        unsafe {
+            // Enable RX interrupt
+            self.write(IER, IER_RX_ENABLE);
+        }
+    }
+
+    pub fn set_baud_rate(&self, baud: u32) {
+        let divisor = calculate_divisor(baud);
         unsafe {
             // Disable interrupts during init
             self.write(IER, 0x00);
@@ -82,9 +90,6 @@ impl Ns16550a {
 
             // IRQs enabled, RTS/DTR set
             self.write(MCR, MCR_OUT2 | MCR_RTS | MCR_DTR);
-
-            // Enable RX interrupt
-            self.write(IER, IER_RX_ENABLE);
         }
     }
 
@@ -267,6 +272,10 @@ impl UartDriver for Ns16550a {
         for c in s.bytes() {
             self.putchar(c);
         }
+    }
+
+    fn set_baud_rate(&mut self, baud: u32) {
+        Self::set_baud_rate(self, baud);
     }
 }
 

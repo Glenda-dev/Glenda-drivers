@@ -25,6 +25,8 @@ pub const VIRTIO_BLK_S_UNSUPP: u8 = 2;
 pub const VIRTIO_F_RING_PACKED: u64 = 1 << 34;
 pub const VIRTIO_F_EVENT_IDX: u64 = 1 << 29;
 
+pub const VIRTIO_BLK_F_BLK_SIZE: u64 = 1 << 6;
+
 pub struct VirtIOBlk {
     pub transport: VirtIOTransport,
     pub queue: Option<VirtQueue>,
@@ -34,6 +36,7 @@ pub struct VirtIOBlk {
     pub ring_server: Option<IoUringServer>,
     pub endpoint: Option<Endpoint>,
     pub buffer: Option<SharedMemory>,
+    pub blk_size: u32,
 }
 
 impl VirtIOBlk {
@@ -47,6 +50,7 @@ impl VirtIOBlk {
             ring_server: None,
             endpoint: None,
             buffer: None,
+            blk_size: 512,
         }
     }
 
@@ -87,6 +91,15 @@ impl VirtIOBlk {
         self.transport.set_driver_features(features);
         self.transport.set_status(self.transport.get_status() | STATUS_FEATURES_OK);
 
+        if features & VIRTIO_BLK_F_BLK_SIZE != 0 {
+            unsafe {
+                let ptr = self.transport.config_ptr() as *const u32;
+                // blk_size is at offset 20 in the config space for virtio-blk
+                self.blk_size = ptr.add(5).read_volatile();
+                log!("VirtIO-Blk: detected block size {}", self.blk_size);
+            }
+        }
+
         let queue_paddr = dma_paddr + 8192;
         let queue_vaddr = unsafe { dma_vaddr.add(8192) };
         let queue = unsafe { VirtQueue::new(0, 128, queue_paddr, queue_vaddr) };
@@ -120,7 +133,7 @@ impl VirtIOBlk {
                 }
             }
         } else {
-            error!("VirtIO-Blk: handle_ring called but ring_server is None!");
+            error!("Handle_ring called but ring_server is None!");
             return;
         }
 
@@ -131,7 +144,7 @@ impl VirtIOBlk {
         for i in 0..count {
             let sqe = sqes[i];
             if let Err(e) = self.submit_virtio_request(sqe) {
-                error!("VirtIO-Blk: submit_virtio_request failed: {:?}", e);
+                error!("Submit_virtio_request failed: {:?}", e);
                 if let Some(server) = self.ring_server.as_mut() {
                     let _ = server.complete(sqe.user_data, -1);
                 }
@@ -145,11 +158,11 @@ impl VirtIOBlk {
 
     fn submit_virtio_request(&mut self, sqe: io_uring::IoUringSqe) -> Result<(), Error> {
         let block_size = self.block_size();
-        if sqe.off % block_size as u64 != 0 || sqe.len % block_size != 0 {
-            error!(
-                "Request not aligned to block size ({}): offset={:#x}, len={}",
-                block_size, sqe.off, sqe.len
-            );
+        let sector = sqe.off;
+        let len = sqe.len;
+
+        if len % block_size != 0 {
+            error!("Request length not aligned to block size ({}): len={}", block_size, len);
             return Err(Error::InvalidArgs);
         }
         let queue = self.queue.as_mut().ok_or(Error::NotInitialized)?;
@@ -158,7 +171,7 @@ impl VirtIOBlk {
             self.pending_info.iter().position(|x| x.is_none()).ok_or(Error::OutOfMemory)?;
 
         if self.dma_vaddr.is_null() {
-            error!("VirtIO-Blk: dma_vaddr is NULL!");
+            error!("Dma_vaddr is NULL!");
             return Err(Error::NotInitialized);
         }
 
@@ -177,7 +190,7 @@ impl VirtIOBlk {
         unsafe {
             core::ptr::addr_of_mut!((*req_ptr).type_).write_volatile(virtio_type);
             core::ptr::addr_of_mut!((*req_ptr).reserved).write_volatile(0);
-            core::ptr::addr_of_mut!((*req_ptr).sector).write_volatile(sqe.off / 512);
+            core::ptr::addr_of_mut!((*req_ptr).sector).write_volatile(sector);
             status_ptr.write_volatile(0xFF);
         }
 
@@ -305,6 +318,6 @@ impl VirtIOBlk {
     }
 
     pub fn block_size(&self) -> u32 {
-        512 // Standard 512-byte sectors for Glenda compatibility
+        self.blk_size
     }
 }

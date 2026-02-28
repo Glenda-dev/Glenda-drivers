@@ -61,35 +61,47 @@ impl<'a> SystemService for RamdiskService<'a> {
             utcb.set_reply_window(self.reply.cap());
             utcb.set_recv_window(RECV_SLOT);
 
-            if self.endpoint.recv(&mut utcb).is_ok() {
-                match SystemService::dispatch(self, &mut utcb) {
-                    Ok(_) => {
-                        let _ = SystemService::reply(self, &mut utcb);
-                    }
-                    Err(Error::Success) => {
-                        // Successfully handled, but no reply needed (e.g., notification)
-                    }
-                    Err(e) => {
-                        let badge = utcb.get_badge();
-                        let tag = utcb.get_msg_tag();
-                        error!(
-                            "Dispatch error: {:?} badge={}, proto={:#x}, label={:#x}",
-                            e,
-                            badge,
-                            tag.proto(),
-                            tag.label()
-                        );
-                        utcb.set_msg_tag(MsgTag::err());
-                        utcb.set_mr(0, e as usize);
-                        let _ = SystemService::reply(self, &mut utcb);
-                    }
+            match self.endpoint.recv(&mut utcb) {
+                Ok(b) => b,
+                Err(e) => {
+                    error!("Recv error: {:?}", e);
+                    continue;
                 }
+            };
+
+            let badge = utcb.get_badge();
+            let proto = utcb.get_msg_tag().proto();
+            let label = utcb.get_msg_tag().label();
+            match self.dispatch(&mut utcb) {
+                Ok(()) => {}
+                Err(e) => {
+                    if e == Error::Success {
+                        continue;
+                    }
+                    error!(
+                        "Failed to dispatch message for {}: {:?}, proto={:#x}, label={:#x}",
+                        badge, e, proto, label
+                    );
+                    utcb.set_msg_tag(MsgTag::err());
+                    utcb.set_mr(0, e as usize);
+                }
+            };
+            if let Err(e) = self.reply(utcb) {
+                error!("Reply error: {:?}", e);
             }
         }
         Ok(())
     }
 
     fn dispatch(&mut self, utcb: &mut UTCB) -> Result<(), Error> {
+        let badge = utcb.get_badge().bits();
+        if badge != 0 && self.connected_client.is_some() && self.connected_client != Some(badge) {
+            let proto = utcb.get_msg_tag().proto();
+            if proto != glenda::protocol::KERNEL_PROTO {
+                return Err(Error::PermissionDenied);
+            }
+        }
+
         glenda::ipc_dispatch! {
             self, utcb,
             (glenda::protocol::KERNEL_PROTO, glenda::protocol::kernel::NOTIFY) => |s: &mut Self, u: &mut UTCB| {
@@ -100,7 +112,33 @@ impl<'a> SystemService for RamdiskService<'a> {
                     Ok(())
                 })
             },
+            (glenda::protocol::DEVICE_PROTO, label) => |s: &mut Self, u: &mut UTCB| {
+                handle_call(u, |u| {
+                    use glenda::interface::device::DeviceService;
+                    use glenda::protocol::device::*;
+                    match label {
+                        GET_MMIO => {
+                            let id = u.get_mr(0);
+                            let recv = u.get_recv_window();
+                            let (frame, addr, size) = s.dev.get_mmio(Badge::null(), id, recv)?;
+                            u.set_mr(0, addr);
+                            u.set_mr(1, size);
+                            Ok(frame.cap())
+                        }
+                        GET_IRQ => {
+                            let id = u.get_mr(0);
+                            let recv = u.get_recv_window();
+                            let irq = s.dev.get_irq(Badge::null(), id, recv)?;
+                            Ok(irq.cap())
+                        }
+                        _ => Err(Error::NotSupported),
+                    }
+                })
+            },
             (BLOCK_PROTO, glenda_drivers::protocol::block::GET_CAPACITY) => |s: &mut Self, u: &mut UTCB| {
+                if badge != 0 && s.connected_client.is_none() {
+                    s.connected_client = Some(badge);
+                }
                 handle_call(u, |_| Ok(s.ramdisk.as_ref().unwrap().capacity() as usize))
             },
             (BLOCK_PROTO, glenda_drivers::protocol::block::GET_BLOCK_SIZE) => |s: &mut Self, u: &mut UTCB| {

@@ -103,15 +103,15 @@ impl Ramdisk {
 
     fn process_sqe(&mut self, sqe: &IoUringSqe) -> i32 {
         let block_size = self.block_size();
-        if sqe.off % block_size as u64 != 0 || sqe.len % block_size != 0 {
+        if sqe.len % block_size != 0 {
             error!(
-                "Ramdisk: request not aligned to block size ({}): offset={:#x}, len={}",
-                block_size, sqe.off, sqe.len
+                "Ramdisk: request length not aligned to block size ({}): len={}",
+                block_size, sqe.len
             );
             return -(Error::InvalidArgs as i32);
         }
 
-        let offset = sqe.off;
+        let sector = sqe.off;
         let len = sqe.len as usize;
         let addr = if let Some(ref shm) = self.buffer {
             let buffer_vaddr = shm.vaddr();
@@ -136,14 +136,15 @@ impl Ramdisk {
         };
 
         log!(
-            "Processing SQE: opcode={}, offset={}, len={}, addr={:?}",
+            "Processing SQE: opcode={}, sector={}, len={}, addr={:?}",
             sqe.opcode,
-            offset,
+            sector,
             len,
             addr
         );
 
-        if offset + len as u64 > self.data.len() as u64 {
+        let byte_offset = sector * block_size as u64;
+        if byte_offset + len as u64 > self.data.len() as u64 {
             return -(Error::InvalidArgs as i32);
         }
 
@@ -151,7 +152,7 @@ impl Ramdisk {
             IOURING_OP_READ => {
                 unsafe {
                     core::ptr::copy_nonoverlapping(
-                        self.data.as_ptr().add(offset as usize),
+                        self.data.as_ptr().add(byte_offset as usize),
                         addr,
                         len,
                     );
@@ -162,7 +163,7 @@ impl Ramdisk {
                 unsafe {
                     core::ptr::copy_nonoverlapping(
                         addr,
-                        self.data.as_mut_ptr().add(offset as usize),
+                        self.data.as_mut_ptr().add(byte_offset as usize),
                         len,
                     );
                 }

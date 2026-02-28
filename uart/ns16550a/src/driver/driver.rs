@@ -1,4 +1,4 @@
-use crate::layout::{IRQ_CAP, IRQ_EP, IRQ_EP_SLOT, IRQ_SLOT, MMIO_SLOT, MMIO_VA};
+use crate::layout::{IRQ_BADGE, IRQ_CAP, IRQ_EP, IRQ_EP_SLOT, IRQ_SLOT, MMIO_SLOT, MMIO_VA};
 use crate::Ns16550a;
 use crate::UartService;
 use glenda::cap::{Rights, CSPACE_CAP};
@@ -15,7 +15,7 @@ impl<'a> DriverService for UartService<'a> {
         log!("Got MMIO cap: addr={:#x}, size={:#x}", pa, size);
         // 2. Map MMIO
         self.res.mmap(Badge::null(), mmio, MMIO_VA, 0x1000)?;
-        let irq_badge = Badge::new(1);
+        let irq_badge = Badge::new(IRQ_BADGE);
         let irq_handler = self.dev.get_irq(Badge::null(), 0, IRQ_SLOT)?;
 
         // 3. Mint a badged endpoint for IRQ notification

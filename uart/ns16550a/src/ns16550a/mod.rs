@@ -128,7 +128,7 @@ impl Ns16550a {
         }
     }
 
-    pub fn handle_async_io(&mut self) {
+    pub fn handle_sq(&mut self) {
         if let Some(mut ring) = self.ring.take() {
             while let Some(sqe) = ring.next_request() {
                 match sqe.opcode {
@@ -189,6 +189,12 @@ impl Ns16550a {
             }
             self.ring = Some(ring);
         }
+    }
+
+    pub fn handle_cq(&mut self) {
+        // CQ notification from client means client has consumed some entries.
+        // For a simple UART driver, we might not need to do anything here
+        // unless we were flow-controlled.
     }
 
     fn process_char(&mut self, c: char) {

@@ -2,22 +2,28 @@ mod device;
 mod driver;
 mod server;
 
+use crate::layout::RING_VA;
 use crate::Ns16550a;
-use glenda::cap::{CapPtr, Endpoint, Reply};
+use glenda::cap::{CapPtr, Endpoint, Frame, Reply};
 use glenda::client::{DeviceClient, ResourceClient};
-use glenda::utils::manager::CSpaceManager;
+use glenda::error::Error;
+use glenda::interface::{MemoryService, ResourceService};
+use glenda::io::uring::{IoUringBuffer, IoUringServer};
+use glenda::ipc::Badge;
+use glenda::utils::manager::{CSpaceManager, CSpaceService};
 
 pub struct UartService<'a> {
-    pub(crate) uart: Option<Ns16550a>,
-    pub(crate) endpoint: Endpoint,
-    pub(crate) reply: Reply,
-    pub(crate) recv: CapPtr,
-    pub(crate) irq_ep: Endpoint,
-    pub(crate) running: bool,
+    pub uart: Option<Ns16550a>,
+    pub endpoint: Endpoint,
+    pub reply: Reply,
+    pub recv: CapPtr,
+    pub irq_ep: Endpoint,
+    pub running: bool,
 
-    pub(crate) dev: &'a mut DeviceClient,
-    pub(crate) res: &'a mut ResourceClient,
-    pub(crate) cspace: &'a mut CSpaceManager,
+    pub dev: &'a mut DeviceClient,
+    pub res: &'a mut ResourceClient,
+    pub cspace: &'a mut CSpaceManager,
+    pub connected_client: Option<usize>,
 }
 
 impl<'a> UartService<'a> {
@@ -36,6 +42,44 @@ impl<'a> UartService<'a> {
             res: res,
             cspace: cspace,
             running: false,
+            connected_client: None,
+        }
+    }
+    fn setup_ring(&mut self, sq: u32, cq: u32, notify_ep: Endpoint) -> Result<Frame, Error> {
+        log!("Setting up ring: sq={}, cq={}, notify_ep={}", sq, cq, notify_ep.cap());
+        let slot = self.cspace.alloc(self.res)?;
+        let (_paddr, frame): (usize, Frame) = self.res.dma_alloc(Badge::null(), 1, slot)?;
+        self.res.mmap(Badge::null(), frame.clone(), RING_VA, 4096)?;
+
+        let ring = unsafe { IoUringBuffer::new(RING_VA as *mut u8, 4096, sq, cq) };
+        let mut server = IoUringServer::new(ring);
+        server.set_client_notify(notify_ep);
+
+        if let Some(uart) = self.uart.as_mut() {
+            uart.ring = Some(server);
+        }
+
+        Ok(frame)
+    }
+
+    fn setup_shm(
+        &mut self,
+        frame: Frame,
+        vaddr: usize,
+        paddr: u64,
+        size: usize,
+    ) -> Result<(), Error> {
+        log!(
+            "Setting up SHM: frame={}, vaddr={}, paddr={} ,size={}",
+            frame.cap(),
+            vaddr,
+            paddr,
+            size
+        );
+        if let Some(uart) = self.uart.as_mut() {
+            uart.setup_shm(frame, vaddr, paddr, size)
+        } else {
+            Err(Error::NotInitialized)
         }
     }
 }

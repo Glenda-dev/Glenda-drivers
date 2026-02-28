@@ -29,6 +29,7 @@ pub struct RamdiskService<'a> {
 
     dev: &'a mut DeviceClient,
     res: &'a mut ResourceClient,
+    connected_client: Option<usize>,
 }
 
 impl<'a> RamdiskService<'a> {
@@ -41,6 +42,7 @@ impl<'a> RamdiskService<'a> {
             running: false,
             dev,
             res,
+            connected_client: None,
         }
     }
 }

@@ -6,7 +6,7 @@ use glenda::error::Error;
 use glenda::interface::{MemoryService, ResourceService, SystemService};
 use glenda::io::uring::{IoUringBuffer as IoUring, IoUringServer};
 use glenda::ipc::server::{handle_call, handle_cap_call, handle_notify};
-use glenda::ipc::{Badge, UTCB};
+use glenda::ipc::{Badge, MsgTag, UTCB};
 use glenda::utils::manager::{CSpaceManager, CSpaceService};
 use glenda_drivers::interface::{DriverService, NetDriver};
 use glenda_drivers::protocol::net::MacAddress;
@@ -20,6 +20,7 @@ pub struct NetService<'a> {
     pub res: &'a mut ResourceClient,
     pub cspace_mgr: &'a mut CSpaceManager,
     pub recv: CapPtr,
+    pub connected_client: Option<usize>,
 }
 
 pub const IRQ_BADGE: Badge = Badge::new(0x1);
@@ -38,6 +39,7 @@ impl<'a> NetService<'a> {
             res,
             cspace_mgr,
             recv: CapPtr::null(),
+            connected_client: None,
         }
     }
 
@@ -126,36 +128,55 @@ impl<'a> SystemService for NetService<'a> {
     }
 
     fn run(&mut self) -> Result<(), Error> {
-        let mut utcb = unsafe { UTCB::new() };
         loop {
             // Clear receive slot before receiving new messages
             let _ = self.cspace_mgr.root().delete(self.recv);
-            utcb.clear();
-            utcb.set_reply_window(self.reply_cap.cap());
-            utcb.set_recv_window(self.recv);
+            loop {
+                let mut utcb = unsafe { UTCB::new() };
+                utcb.clear();
+                utcb.set_reply_window(self.reply_cap.cap());
+                utcb.set_recv_window(self.recv);
+                match self.endpoint.recv(&mut utcb) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        error!("Recv error: {:?}", e);
+                        continue;
+                    }
+                };
 
-            if let Err(e) = self.endpoint.recv(&mut utcb) {
-                error!("Recv error: {:?}", e);
-                continue;
-            }
-            match self.dispatch(&mut utcb) {
-                Ok(_) => {
-                    let _ = self.reply(&mut utcb);
-                }
-                Err(Error::Success) => {
-                    // Successfully handled, but no reply needed (e.g., notification)
-                }
-                Err(e) => {
-                    error!("Dispatch error: {:?}", e);
-                    utcb.set_msg_tag(glenda::ipc::MsgTag::err());
+                let badge = utcb.get_badge();
+                let proto = utcb.get_msg_tag().proto();
+                let label = utcb.get_msg_tag().label();
+
+                let res = self.dispatch(&mut utcb);
+                if let Err(e) = res {
+                    if e == Error::Success {
+                        continue;
+                    }
+                    error!(
+                        "Failed to dispatch message for {}: {:?}, proto={:#x}, label={:#x}",
+                        badge, e, proto, label
+                    );
+                    utcb.set_msg_tag(MsgTag::err());
                     utcb.set_mr(0, e as usize);
-                    let _ = self.reply(&mut utcb);
+                }
+
+                if let Err(e) = self.reply(&mut utcb) {
+                    error!("Reply failed: {:?}", e);
                 }
             }
         }
     }
 
     fn dispatch(&mut self, utcb: &mut UTCB) -> Result<(), Error> {
+        let badge = utcb.get_badge().bits();
+        if badge != 0 && self.connected_client.is_some() && self.connected_client != Some(badge) {
+            let proto = utcb.get_msg_tag().proto();
+            if proto != glenda::protocol::KERNEL_PROTO {
+                return Err(Error::PermissionDenied);
+            }
+        }
+
         glenda::ipc_dispatch! {
             self, utcb,
             (glenda::protocol::KERNEL_PROTO, glenda::protocol::kernel::NOTIFY) => |s: &mut Self, u: &mut UTCB| {
@@ -171,7 +192,33 @@ impl<'a> SystemService for NetService<'a> {
                     Ok(())
                 })
             },
+            (glenda::protocol::DEVICE_PROTO, label) => |s: &mut Self, u: &mut UTCB| {
+                handle_call(u, |u| {
+                    use glenda::interface::device::DeviceService;
+                    use glenda::protocol::device::*;
+                    match label {
+                        GET_MMIO => {
+                            let id = u.get_mr(0);
+                            let recv = u.get_recv_window();
+                            let (frame, addr, size) = s.dev.get_mmio(Badge::null(), id, recv)?;
+                            u.set_mr(0, addr);
+                            u.set_mr(1, size);
+                            Ok(frame.cap())
+                        }
+                        GET_IRQ => {
+                            let id = u.get_mr(0);
+                            let recv = u.get_recv_window();
+                            let irq = s.dev.get_irq(Badge::null(), id, recv)?;
+                            Ok(irq.cap())
+                        }
+                        _ => Err(Error::NotSupported),
+                    }
+                })
+            },
             (NET_PROTO, net::GET_MAC) => |s: &mut Self, u: &mut UTCB| {
+                if badge != 0 && s.connected_client.is_none() {
+                    s.connected_client = Some(badge);
+                }
                 let mac = s.mac_address();
                 handle_call(u, |u| {
                     for i in 0..6 {

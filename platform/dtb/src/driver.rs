@@ -11,8 +11,8 @@ use glenda::ipc::Badge;
 use glenda::utils::align::align_up;
 use glenda::protocol::device::{DeviceDesc, DeviceDescNode, MMIORegion};
 use glenda::utils::manager::{CSpaceManager, VSpaceManager};
-use glenda_drivers::interface::DriverService;
-use glenda_drivers::protocol::thermal;
+use glenda::drivers::interface::DriverService;
+use glenda::drivers::protocol::thermal;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PowerMethod {

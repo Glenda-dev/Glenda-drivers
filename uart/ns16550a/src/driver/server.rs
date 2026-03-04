@@ -5,8 +5,8 @@ use glenda::error::Error;
 use glenda::interface::SystemService;
 use glenda::ipc::server::{handle_call, handle_cap_call, handle_notify};
 use glenda::ipc::{Badge, MsgTag, UTCB};
-use glenda_drivers::interface::{DriverService, UartDriver};
-use glenda_drivers::protocol;
+use glenda::drivers::interface::{DriverService, UartDriver};
+use glenda::drivers::protocol;
 
 impl<'a> SystemService for UartService<'a> {
     fn init(&mut self) -> Result<(), Error> {

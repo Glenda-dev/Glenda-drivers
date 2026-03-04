@@ -5,8 +5,8 @@ use glenda::interface::{DeviceService, SystemService};
 use glenda::ipc::{Badge, MsgTag, UTCB};
 use glenda::ipc_dispatch;
 use glenda::protocol::device::{LogicDeviceDesc, LogicDeviceType};
-use glenda_drivers::interface::DriverService;
-use glenda_drivers::protocol;
+use glenda::drivers::interface::DriverService;
+use glenda::drivers::protocol;
 
 impl<'a> SystemService for DtbDriver<'a> {
     fn init(&mut self) -> Result<(), Error> {

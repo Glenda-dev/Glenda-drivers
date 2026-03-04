@@ -2,14 +2,14 @@ use crate::GoldfishRtc;
 use glenda::cap::{CapPtr, Endpoint, Reply};
 use glenda::client::DeviceClient;
 use glenda::client::ResourceClient;
+use glenda::drivers::interface::DriverService;
+use glenda::drivers::interface::TimerDriver;
+use glenda::drivers::protocol::timer::{GET_TIME, SET_ALARM, SET_TIME, STOP_ALARM};
+use glenda::drivers::protocol::TIMER_PROTO;
 use glenda::error::Error;
 use glenda::interface::SystemService;
 use glenda::ipc::{MsgTag, UTCB};
 use glenda::utils::manager::{CSpaceManager, VSpaceManager};
-use glenda_drivers::interface::DriverService;
-use glenda_drivers::interface::TimerDriver;
-use glenda_drivers::protocol::timer::{GET_TIME, SET_ALARM, SET_TIME, STOP_ALARM};
-use glenda_drivers::protocol::TIMER_PROTO;
 
 pub struct RtcService<'a> {
     pub rtc: Option<GoldfishRtc>,

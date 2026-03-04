@@ -14,7 +14,7 @@ use glenda::interface::{DeviceService, ResourceService};
 use glenda::ipc::Badge;
 use glenda::protocol::resource::ResourceType;
 use glenda::protocol::resource::DEVICE_ENDPOINT;
-use glenda_drivers::interface::BusDriver;
+use glenda::drivers::interface::BusDriver;
 
 mod arch;
 mod driver;

@@ -2,14 +2,14 @@ use crate::blk::*;
 use crate::layout::{IRQ_BADGE, RING_VA};
 use glenda::cap::{CapPtr, Endpoint, Frame, IrqHandler, Reply, CSPACE_CAP};
 use glenda::client::{DeviceClient, ResourceClient};
+use glenda::drivers::interface::DriverService;
+use glenda::drivers::protocol::{block, BLOCK_PROTO};
 use glenda::error::Error;
 use glenda::interface::{CSpaceService, ResourceService, SystemService, VSpaceService};
 use glenda::io::uring::{IoUringBuffer as IoUring, IoUringServer};
 use glenda::ipc::server::{handle_call, handle_cap_call, handle_notify};
 use glenda::ipc::{Badge, MsgTag, UTCB};
 use glenda::utils::manager::{CSpaceManager, VSpaceManager};
-use glenda_drivers::interface::DriverService;
-use glenda_drivers::protocol::{block, BLOCK_PROTO};
 
 pub struct BlockService<'a> {
     pub blk: Option<VirtIOBlk>,

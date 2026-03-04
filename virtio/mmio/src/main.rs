@@ -13,11 +13,11 @@ mod layout;
 use crate::layout::{DEVICE_CAP, DEVICE_SLOT};
 use glenda::cap::MONITOR_CAP;
 use glenda::client::{DeviceClient, ResourceClient};
+use glenda::drivers::interface::ProbeDriver;
 use glenda::interface::{DeviceService, ResourceService};
 use glenda::ipc::Badge;
 use glenda::protocol::resource::{ResourceType, DEVICE_ENDPOINT};
 use glenda::utils::manager::{CSpaceManager, VSpaceManager};
-use glenda_drivers::interface::ProbeDriver;
 
 #[unsafe(no_mangle)]
 fn main() -> usize {

@@ -5,7 +5,7 @@ use glenda::cap::{Rights, CSPACE_CAP};
 use glenda::error::Error;
 use glenda::interface::{DeviceService, MemoryService};
 use glenda::ipc::Badge;
-use glenda_drivers::interface::DriverService;
+use glenda::drivers::interface::DriverService;
 
 impl DriverService for GpioService<'_> {
     fn init(&mut self) -> Result<(), Error> {

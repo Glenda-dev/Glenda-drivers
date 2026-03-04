@@ -3,11 +3,11 @@ use crate::net::VirtIONet;
 use crate::NetService;
 use alloc::string::String;
 use glenda::cap::{Rights, CSPACE_CAP};
+use glenda::drivers::interface::DriverService;
 use glenda::error::Error;
 use glenda::interface::{DeviceService, ResourceService, VSpaceService};
 use glenda::ipc::Badge;
 use glenda::protocol::device::LogicDeviceDesc;
-use glenda_drivers::interface::DriverService;
 
 impl DriverService for NetService<'_> {
     fn init(&mut self) -> Result<(), Error> {

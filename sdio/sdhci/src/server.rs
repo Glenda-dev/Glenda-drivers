@@ -3,13 +3,13 @@ use glenda::cap::{CapPtr, Endpoint, Reply};
 use glenda::client::DeviceClient;
 use glenda::client::ResourceClient;
 use glenda::error::Error;
-use glenda_drivers::interface::SdioDriver;
+use glenda::drivers::interface::SdioDriver;
 use glenda::interface::SystemService;
-use glenda_drivers::interface::DriverService;
+use glenda::drivers::interface::DriverService;
 use glenda::ipc::{MsgTag, UTCB};
 use glenda::protocol::device::sdio::SdioCommand;
-use glenda_drivers::protocol::sdio::SEND_COMMAND;
-use glenda_drivers::protocol::SDIO_PROTO;
+use glenda::drivers::protocol::sdio::SEND_COMMAND;
+use glenda::drivers::protocol::SDIO_PROTO;
 
 pub struct SdhciService<'a> {
     pub sdhci: Option<Sdhci>,

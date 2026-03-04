@@ -8,11 +8,11 @@ use alloc::string::String;
 use core::ptr::NonNull;
 use glenda::arch::mem::PGSIZE;
 use glenda::cap::{Rights, CSPACE_CAP};
+use glenda::drivers::interface::DriverService;
 use glenda::error::Error;
 use glenda::interface::{DeviceService, ResourceService, VSpaceService};
 use glenda::ipc::Badge;
 use glenda::protocol::device::LogicDeviceDesc;
-use glenda_drivers::interface::DriverService;
 use virtio_common::VirtIOTransport;
 
 impl DriverService for BlockService<'_> {

@@ -3,11 +3,11 @@ use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use glenda::arch::mem::PGSIZE;
 use glenda::client::{DeviceClient, ResourceClient};
+use glenda::drivers::interface::ProbeDriver;
 use glenda::error::Error;
 use glenda::interface::{DeviceService, VSpaceService};
 use glenda::ipc::Badge;
 use glenda::utils::manager::{CSpaceManager, VSpaceManager};
-use glenda_drivers::interface::ProbeDriver;
 use virtio_common::consts::*;
 
 pub struct VirtioMmioDriver<'a> {

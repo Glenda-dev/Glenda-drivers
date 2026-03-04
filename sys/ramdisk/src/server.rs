@@ -3,12 +3,12 @@ use crate::driver::Ramdisk;
 use crate::layout::{BUFFER_SLOT, MMIO_SLOT, MMIO_VA, NOTIFY_SLOT};
 use glenda::cap::{CSPACE_CAP, CapPtr, ENDPOINT_SLOT, Endpoint, RECV_SLOT, Reply};
 use glenda::client::ResourceClient;
+use glenda::drivers::protocol::BLOCK_PROTO;
 use glenda::error::Error;
 use glenda::interface::{DeviceService, SystemService, VSpaceService};
 use glenda::ipc::server::{handle_call, handle_cap_call, handle_notify};
 use glenda::ipc::{Badge, MsgTag, UTCB};
 use glenda::utils::manager::{CSpaceManager, VSpaceManager};
-use glenda_drivers::protocol::BLOCK_PROTO;
 
 impl<'a> SystemService for RamdiskService<'a> {
     fn init(&mut self) -> Result<(), Error> {
@@ -144,16 +144,16 @@ impl<'a> SystemService for RamdiskService<'a> {
                     }
                 })
             },
-            (BLOCK_PROTO, glenda_drivers::protocol::block::GET_CAPACITY) => |s: &mut Self, u: &mut UTCB| {
+            (BLOCK_PROTO, glenda::drivers::protocol::block::GET_CAPACITY) => |s: &mut Self, u: &mut UTCB| {
                 if badge != 0 && s.connected_client.is_none() {
                     s.connected_client = Some(badge);
                 }
                 handle_call(u, |_| Ok(s.ramdisk.as_ref().unwrap().capacity() as usize))
             },
-            (BLOCK_PROTO, glenda_drivers::protocol::block::GET_BLOCK_SIZE) => |s: &mut Self, u: &mut UTCB| {
+            (BLOCK_PROTO, glenda::drivers::protocol::block::GET_BLOCK_SIZE) => |s: &mut Self, u: &mut UTCB| {
                 handle_call(u, |_| Ok(s.ramdisk.as_ref().unwrap().block_size() as usize))
             },
-            (BLOCK_PROTO, glenda_drivers::protocol::block::SETUP_BUFFER) => |s: &mut Self, u: &mut UTCB| {
+            (BLOCK_PROTO, glenda::drivers::protocol::block::SETUP_BUFFER) => |s: &mut Self, u: &mut UTCB| {
                 let recv_slot = s.recv;
                 let client_vaddr = u.get_mr(0);
                 let size = u.get_mr(1);
@@ -170,7 +170,7 @@ impl<'a> SystemService for RamdiskService<'a> {
                     Ok(0usize)
                 })
             },
-            (BLOCK_PROTO, glenda_drivers::protocol::block::SETUP_RING) => |s: &mut Self, u: &mut UTCB| {
+            (BLOCK_PROTO, glenda::drivers::protocol::block::SETUP_RING) => |s: &mut Self, u: &mut UTCB| {
                 let recv_slot = s.recv;
                 let sq = u.get_mr(0) as u32;
                 let cq = u.get_mr(1) as u32;

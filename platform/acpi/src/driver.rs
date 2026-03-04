@@ -8,8 +8,8 @@ use glenda::error::Error;
 use glenda::interface::DeviceService;
 use glenda::ipc::Badge;
 use glenda::protocol::device::DeviceDescNode;
-use glenda_drivers::interface::BusDriver;
-use glenda_drivers::interface::DriverService;
+use glenda::drivers::interface::BusDriver;
+use glenda::drivers::interface::DriverService;
 
 pub struct AcpiDriver<'a> {
     pub endpoint: Endpoint,

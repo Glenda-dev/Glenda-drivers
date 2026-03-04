@@ -6,7 +6,7 @@ use glenda::error::Error;
 use glenda::interface::DeviceService;
 use glenda::interface::VSpaceService;
 use glenda::ipc::Badge;
-use glenda_drivers::interface::DriverService;
+use glenda::drivers::interface::DriverService;
 
 impl<'a> DriverService for UartService<'a> {
     fn init(&mut self) -> Result<(), Error> {

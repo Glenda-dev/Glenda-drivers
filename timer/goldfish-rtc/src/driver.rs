@@ -2,12 +2,12 @@ use crate::layout::{IRQ_SLOT, MMIO_SLOT, MMIO_VA};
 use crate::GoldfishRtc;
 use crate::RtcService;
 use glenda::cap::{Rights, CSPACE_CAP};
+use glenda::drivers::interface::DriverService;
 use glenda::error::Error;
 use glenda::interface::{DeviceService, VSpaceService};
 use glenda::ipc::Badge;
 use glenda::mem::Perms;
 use glenda::protocol::device::{LogicDeviceDesc, LogicDeviceType};
-use glenda_drivers::interface::DriverService;
 
 impl DriverService for RtcService<'_> {
     fn init(&mut self) -> Result<(), Error> {

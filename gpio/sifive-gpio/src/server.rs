@@ -3,12 +3,12 @@ use glenda::cap::{CapPtr, Endpoint, Reply};
 use glenda::client::DeviceClient;
 use glenda::client::ResourceClient;
 use glenda::error::Error;
-use glenda_drivers::interface::GpioDriver;
+use glenda::drivers::interface::GpioDriver;
 use glenda::interface::SystemService;
-use glenda_drivers::interface::DriverService;
+use glenda::drivers::interface::DriverService;
 use glenda::ipc::{MsgTag, UTCB};
-use glenda_drivers::protocol::gpio::{READ, SET_MODE, WRITE};
-use glenda_drivers::protocol::GPIO_PROTO;
+use glenda::drivers::protocol::gpio::{READ, SET_MODE, WRITE};
+use glenda::drivers::protocol::GPIO_PROTO;
 
 pub struct GpioService<'a> {
     pub gpio: Option<SiFiveGpio>,

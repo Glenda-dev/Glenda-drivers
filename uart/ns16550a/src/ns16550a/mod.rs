@@ -9,7 +9,7 @@ use glenda::cap::{Frame, IrqHandler};
 use glenda::error::Error;
 use glenda::io::uring::IoUringServer;
 use glenda::mem::shm::SharedMemory;
-use glenda_drivers::interface::UartDriver;
+use glenda::drivers::interface::UartDriver;
 #[cfg(feature = "unicode")]
 use utf8::Utf8Decoder;
 

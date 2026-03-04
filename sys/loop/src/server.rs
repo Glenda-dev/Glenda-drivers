@@ -2,7 +2,7 @@ use glenda::cap::{Endpoint, ENDPOINT_CAP, REPLY_CAP};
 use glenda::error::Error;
 use glenda::ipc::{MsgFlags, MsgTag, UTCB};
 use glenda::protocol::{fs, FS_PROTO};
-use glenda_drivers::protocol::{block, BLOCK_PROTO};
+use glenda::drivers::protocol::{block, BLOCK_PROTO};
 
 pub struct BadgedFileClient {
     endpoint: Endpoint,

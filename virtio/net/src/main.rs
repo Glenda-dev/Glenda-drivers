@@ -21,13 +21,14 @@ use glenda::client::{DeviceClient, ResourceClient};
 use glenda::interface::{ResourceService, SystemService};
 use glenda::ipc::Badge;
 use glenda::protocol::resource::{ResourceType, DEVICE_ENDPOINT};
-use glenda::utils::manager::CSpaceManager;
+use glenda::utils::manager::{CSpaceManager, VSpaceManager};
 
 #[no_mangle]
 fn main() -> usize {
     glenda::console::init_logging("VirtIO-Net");
     log!("Starting...");
     let mut cspace_mgr = CSpaceManager::new(CSPACE_CAP, 16);
+    let mut vspace_mgr = VSpaceManager::new(glenda::cap::VSPACE_CAP, 0x7000_0000, 0x8000_0000);
 
     let mut res_client = ResourceClient::new(MONITOR_CAP);
     res_client
@@ -39,7 +40,8 @@ fn main() -> usize {
         .alloc(Badge::null(), CapType::Endpoint, 0, ENDPOINT_SLOT)
         .expect("Failed to allocate endpoint cap for service");
 
-    let mut service = NetService::new(&mut dev_client, &mut res_client, &mut cspace_mgr);
+    let mut service =
+        NetService::new(&mut dev_client, &mut res_client, &mut cspace_mgr, &mut vspace_mgr);
     service.listen(ENDPOINT_CAP, REPLY_SLOT, RECV_SLOT).expect("Failed to listen");
 
     SystemService::init(&mut service).expect("Failed to init net service");

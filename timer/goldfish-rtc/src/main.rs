@@ -15,17 +15,21 @@ pub use rtc::GoldfishRtc;
 pub use server::RtcService;
 
 use crate::layout::{DEVICE_CAP, DEVICE_SLOT};
-use glenda::cap::CapType;
-use glenda::cap::{ENDPOINT_CAP, ENDPOINT_SLOT, MONITOR_CAP, RECV_SLOT, REPLY_SLOT};
+use glenda::cap::{
+    CapType, CSPACE_CAP, ENDPOINT_CAP, ENDPOINT_SLOT, MONITOR_CAP, RECV_SLOT, REPLY_SLOT,
+    VSPACE_CAP,
+};
 use glenda::client::{DeviceClient, ResourceClient};
 use glenda::interface::{ResourceService, SystemService};
 use glenda::ipc::Badge;
 use glenda::protocol::resource::{ResourceType, DEVICE_ENDPOINT};
+use glenda::utils::manager::{CSpaceManager, VSpaceManager};
 
 #[no_mangle]
 fn main() -> usize {
     glenda::console::init_logging("Goldfish-RTC");
     log!("Starting...");
+
     let mut res_client = ResourceClient::new(MONITOR_CAP);
     res_client
         .get_cap(Badge::null(), ResourceType::Endpoint, DEVICE_ENDPOINT, DEVICE_SLOT)
@@ -34,9 +38,12 @@ fn main() -> usize {
 
     res_client
         .alloc(Badge::null(), CapType::Endpoint, 0, ENDPOINT_SLOT)
-        .expect("Failed to allocate endpoint cap for service");
+        .expect("Failed to alloc recv slot");
 
-    let mut service = RtcService::new(&mut dev_client, &mut res_client);
+    let mut cspace = CSpaceManager::new(CSPACE_CAP, 16);
+    let mut vspace = VSpaceManager::new(VSPACE_CAP, 0x8000_0000, 0x1000_0000);
+
+    let mut service = RtcService::new(&mut dev_client, &mut res_client, &mut vspace, &mut cspace);
     service.listen(ENDPOINT_CAP, REPLY_SLOT, RECV_SLOT).expect("Failed to listen");
 
     SystemService::init(&mut service).expect("Failed to init RTC service");

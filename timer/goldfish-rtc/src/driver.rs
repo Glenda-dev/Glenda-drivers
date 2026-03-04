@@ -1,10 +1,11 @@
-use crate::layout::{IRQ_EP, IRQ_EP_SLOT, IRQ_SLOT, MMIO_SLOT, MMIO_VA};
+use crate::layout::{IRQ_SLOT, MMIO_SLOT, MMIO_VA};
 use crate::GoldfishRtc;
 use crate::RtcService;
 use glenda::cap::{Rights, CSPACE_CAP};
 use glenda::error::Error;
-use glenda::interface::{DeviceService, MemoryService};
+use glenda::interface::{DeviceService, VSpaceService};
 use glenda::ipc::Badge;
+use glenda::mem::Perms;
 use glenda::protocol::device::{LogicDeviceDesc, LogicDeviceType};
 use glenda_drivers::interface::DriverService;
 
@@ -17,17 +18,23 @@ impl DriverService for RtcService<'_> {
         log!("Got MMIO cap: addr={:#x}, size={:#x}", pa, size);
 
         // 2. Map MMIO
-        self.res.mmap(Badge::null(), mmio, MMIO_VA, 0x1000)?;
-
+        self.vspace.map_frame(
+            mmio,
+            MMIO_VA,
+            Perms::READ | Perms::WRITE,
+            1,
+            self.res,
+            self.cspace,
+        )?;
         // 3. Get IRQ Cap
         let irq_badge = Badge::new(1);
         let irq = self.dev.get_irq(Badge::null(), 0, IRQ_SLOT)?;
 
         // Mint a badged endpoint for IRQ notification
-        CSPACE_CAP.mint(self.endpoint.cap(), IRQ_EP_SLOT, irq_badge, Rights::ALL)?;
+        CSPACE_CAP.mint(self.endpoint.cap(), self.recv, irq_badge, Rights::ALL)?;
 
         // 4. Configure Interrupt
-        irq.set_notification(IRQ_EP)?;
+        irq.set_notification(self.endpoint)?;
         irq.ack()?;
 
         // 5. Init Hardware

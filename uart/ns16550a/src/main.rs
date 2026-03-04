@@ -11,14 +11,14 @@ mod layout;
 mod ns16550a;
 
 use crate::layout::{DEVICE_CAP, DEVICE_SLOT};
-use glenda::cap::{CapType, CSPACE_CAP};
+use glenda::cap::CapType;
 use glenda::cap::{ENDPOINT_CAP, ENDPOINT_SLOT, MONITOR_CAP, RECV_SLOT, REPLY_SLOT};
 use glenda::client::{DeviceClient, ResourceClient};
 use glenda::interface::{ResourceService, SystemService};
 use glenda::ipc::Badge;
 use glenda::protocol::resource::ResourceType;
 use glenda::protocol::resource::DEVICE_ENDPOINT;
-use glenda::utils::manager::CSpaceManager;
+use glenda::utils::manager::{CSpaceManager, VSpaceManager};
 
 pub use driver::UartService;
 pub use ns16550a::Ns16550a;
@@ -35,8 +35,10 @@ fn main() -> usize {
     res_client
         .alloc(Badge::null(), CapType::Endpoint, 0, ENDPOINT_SLOT)
         .expect("Failed to allocate endpoint cap for service");
-    let mut cspace_mgr = CSpaceManager::new(CSPACE_CAP, 16);
-    let mut service = UartService::new(&mut dev_client, &mut res_client, &mut cspace_mgr);
+    let mut cspace_mgr = CSpaceManager::new(glenda::cap::CSPACE_CAP, 16);
+    let mut vspace_mgr = VSpaceManager::new(glenda::cap::VSPACE_CAP, 0x7000_0000, 0x8000_0000);
+    let mut service =
+        UartService::new(&mut dev_client, &mut res_client, &mut cspace_mgr, &mut vspace_mgr);
     service.listen(ENDPOINT_CAP, REPLY_SLOT, RECV_SLOT).expect("Failed to listen");
     SystemService::init(&mut service).expect("Failed to init service");
     service.run().expect("UART driver exited");

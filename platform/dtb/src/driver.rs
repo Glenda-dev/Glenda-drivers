@@ -1,12 +1,16 @@
 pub use crate::layout::{MAP_VA, MMIO_SLOT};
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
-use glenda::cap::{CapPtr, Endpoint, Reply};
+use glenda::cap::{CapPtr, Endpoint, Reply, Frame};
 use glenda::client::{DeviceClient, ResourceClient};
+use glenda::arch::mem::PGSIZE;
+use glenda::mem::Perms;
 use glenda::error::Error;
-use glenda::interface::{DeviceService, MemoryService};
+use glenda::interface::{DeviceService, VSpaceService};
 use glenda::ipc::Badge;
+use glenda::utils::align::align_up;
 use glenda::protocol::device::{DeviceDesc, DeviceDescNode, MMIORegion};
+use glenda::utils::manager::{CSpaceManager, VSpaceManager};
 use glenda_drivers::interface::DriverService;
 use glenda_drivers::protocol::thermal;
 
@@ -19,7 +23,7 @@ pub enum PowerMethod {
     None,
 }
 
-pub struct DtbDriver {
+pub struct DtbDriver<'a> {
     pub endpoint: Endpoint,
     pub reply: Reply,
     pub recv: CapPtr,
@@ -32,11 +36,19 @@ pub struct DtbDriver {
     pub power_method: PowerMethod,
 
     pub dev_client: DeviceClient,
-    pub res_client: ResourceClient,
+    pub res_client: &'a mut ResourceClient,
+    pub vspace_mgr: &'a mut VSpaceManager,
+    pub cspace_mgr: &'a mut CSpaceManager,
 }
 
-impl DtbDriver {
-    pub fn new(endpoint: Endpoint, dev_client: DeviceClient, res_client: ResourceClient) -> Self {
+impl<'a> DtbDriver<'a> {
+    pub fn new(
+        endpoint: Endpoint,
+        dev_client: DeviceClient,
+        res_client: &'a mut ResourceClient,
+        vspace_mgr: &'a mut VSpaceManager,
+        cspace_mgr: &'a mut CSpaceManager,
+    ) -> Self {
         Self {
             endpoint,
             reply: Reply::from(CapPtr::null()),
@@ -51,6 +63,8 @@ impl DtbDriver {
 
             dev_client,
             res_client,
+            vspace_mgr,
+            cspace_mgr,
         }
     }
 
@@ -95,7 +109,7 @@ impl DtbDriver {
     }
 }
 
-impl DtbDriver {
+impl<'a> DtbDriver<'a> {
     pub fn probe(&mut self) -> Result<Vec<DeviceDescNode>, Error> {
         // Assume FDT is mapped at MAP_VA
         let fdt_slice = unsafe { core::slice::from_raw_parts(MAP_VA as *const u8, 0x100000) };
@@ -112,7 +126,7 @@ impl DtbDriver {
     }
 }
 
-impl DriverService for DtbDriver {
+impl<'a> DriverService for DtbDriver<'a> {
     fn init(&mut self) -> Result<(), Error> {
         // 1. Get DTB MMIO from Device Manager
         let (fdt_cap, fdt_addr, fdt_size) =
@@ -120,7 +134,14 @@ impl DriverService for DtbDriver {
         log!("Got DTB MMIO: cap={:?}, addr={:#x}, size={:#x}", fdt_cap, fdt_addr, fdt_size);
 
         // 2. Map DTB
-        self.res_client.mmap(Badge::null(), fdt_cap, MAP_VA, fdt_size)?;
+        self.vspace_mgr.map_frame(
+            Frame::from(fdt_cap.into()),
+            MAP_VA,
+            Perms::READ | Perms::WRITE,
+            align_up(fdt_size, PGSIZE) / PGSIZE,
+            self.res_client,
+            self.cspace_mgr,
+        )?;
 
         // 3. Parse DTB for platforms and thermal zones
         let fdt_slice = unsafe { core::slice::from_raw_parts(MAP_VA as *const u8, fdt_size) };

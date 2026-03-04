@@ -1,13 +1,13 @@
 use crate::blk::*;
 use crate::layout::{IRQ_BADGE, RING_VA};
-use glenda::cap::{CapPtr, Endpoint, Frame, IrqHandler, Reply};
+use glenda::cap::{CapPtr, Endpoint, Frame, IrqHandler, Reply, CSPACE_CAP};
 use glenda::client::{DeviceClient, ResourceClient};
 use glenda::error::Error;
-use glenda::interface::{MemoryService, ResourceService, SystemService};
+use glenda::interface::{CSpaceService, ResourceService, SystemService, VSpaceService};
 use glenda::io::uring::{IoUringBuffer as IoUring, IoUringServer};
 use glenda::ipc::server::{handle_call, handle_cap_call, handle_notify};
 use glenda::ipc::{Badge, MsgTag, UTCB};
-use glenda::utils::manager::{CSpaceManager, CSpaceService};
+use glenda::utils::manager::{CSpaceManager, VSpaceManager};
 use glenda_drivers::interface::DriverService;
 use glenda_drivers::protocol::{block, BLOCK_PROTO};
 
@@ -20,6 +20,7 @@ pub struct BlockService<'a> {
     pub dev: &'a mut DeviceClient,
     pub res: &'a mut ResourceClient,
     pub cspace_mgr: &'a mut CSpaceManager,
+    pub vspace_mgr: &'a mut VSpaceManager,
     pub connected_client: Option<usize>,
 }
 
@@ -28,6 +29,7 @@ impl<'a> BlockService<'a> {
         dev: &'a mut DeviceClient,
         res: &'a mut ResourceClient,
         cspace_mgr: &'a mut CSpaceManager,
+        vspace_mgr: &'a mut VSpaceManager,
     ) -> Self {
         Self {
             blk: None,
@@ -38,6 +40,7 @@ impl<'a> BlockService<'a> {
             dev,
             res,
             cspace_mgr,
+            vspace_mgr,
             connected_client: None,
         }
     }
@@ -55,7 +58,14 @@ impl<'a> BlockService<'a> {
         log!("setup_ring: dma_alloc ok, paddr={:#x}", paddr);
 
         // Map the DMA frame to our virtual address space
-        self.res.mmap(Badge::null(), frame.clone(), RING_VA, glenda::arch::mem::PGSIZE)?;
+        self.vspace_mgr.map_frame(
+            frame.clone(),
+            RING_VA,
+            glenda::mem::Perms::READ | glenda::mem::Perms::WRITE,
+            1,
+            self.res,
+            self.cspace_mgr,
+        )?;
         glenda::arch::sync::fence();
 
         let ring = unsafe {
@@ -229,7 +239,7 @@ impl<'a> SystemService for BlockService<'a> {
                     let size = u.get_mr(1);
                     let paddr = u.get_mr(2) as u64;
 
-                    s.cspace_mgr.root().move_cap(recv_slot, slot)?;
+                    CSPACE_CAP.move_cap(recv_slot, slot)?;
 
                     let frame = Frame::from(slot);
                     s.setup_shm(frame, vaddr, paddr, size)?;
@@ -244,7 +254,7 @@ impl<'a> SystemService for BlockService<'a> {
                     let sq = u.get_mr(0) as u32;
                     let cq = u.get_mr(1) as u32;
 
-                    s.cspace_mgr.root().move_cap(recv_slot, slot)?;
+                    CSPACE_CAP.move_cap(recv_slot, slot)?;
 
                     // The client passed its notification endpoint in the UTCB.
                     // It was moved to slot.

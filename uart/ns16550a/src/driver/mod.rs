@@ -7,10 +7,10 @@ use crate::Ns16550a;
 use glenda::cap::{CapPtr, Endpoint, Frame, Reply};
 use glenda::client::{DeviceClient, ResourceClient};
 use glenda::error::Error;
-use glenda::interface::{MemoryService, ResourceService};
+use glenda::interface::{CSpaceService, ResourceService, VSpaceService};
 use glenda::io::uring::{IoUringBuffer, IoUringServer};
 use glenda::ipc::Badge;
-use glenda::utils::manager::{CSpaceManager, CSpaceService};
+use glenda::utils::manager::{CSpaceManager, VSpaceManager};
 
 pub struct UartService<'a> {
     pub uart: Option<Ns16550a>,
@@ -23,6 +23,7 @@ pub struct UartService<'a> {
     pub dev: &'a mut DeviceClient,
     pub res: &'a mut ResourceClient,
     pub cspace: &'a mut CSpaceManager,
+    pub vspace: &'a mut VSpaceManager,
     pub connected_client: Option<usize>,
 }
 
@@ -31,6 +32,7 @@ impl<'a> UartService<'a> {
         dev: &'a mut DeviceClient,
         res: &'a mut ResourceClient,
         cspace: &'a mut CSpaceManager,
+        vspace: &'a mut VSpaceManager,
     ) -> Self {
         Self {
             uart: None,
@@ -38,9 +40,10 @@ impl<'a> UartService<'a> {
             reply: Reply::from(CapPtr::null()),
             recv: CapPtr::null(),
             irq_ep: Endpoint::from(CapPtr::null()),
-            dev: dev,
-            res: res,
-            cspace: cspace,
+            dev,
+            res,
+            cspace,
+            vspace,
             running: false,
             connected_client: None,
         }
@@ -49,7 +52,15 @@ impl<'a> UartService<'a> {
         log!("Setting up ring: sq={}, cq={}, notify_ep={}", sq, cq, notify_ep.cap());
         let slot = self.cspace.alloc(self.res)?;
         let (_paddr, frame): (usize, Frame) = self.res.dma_alloc(Badge::null(), 1, slot)?;
-        self.res.mmap(Badge::null(), frame.clone(), RING_VA, 4096)?;
+
+        self.vspace.map_frame(
+            frame.clone(),
+            RING_VA,
+            glenda::mem::Perms::READ | glenda::mem::Perms::WRITE,
+            1,
+            self.res,
+            self.cspace,
+        )?;
 
         let ring = unsafe { IoUringBuffer::new(RING_VA as *mut u8, 4096, sq, cq) };
         let mut server = IoUringServer::new(ring);

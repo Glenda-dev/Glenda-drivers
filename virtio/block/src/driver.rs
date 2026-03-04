@@ -9,7 +9,7 @@ use core::ptr::NonNull;
 use glenda::arch::mem::PGSIZE;
 use glenda::cap::{Rights, CSPACE_CAP};
 use glenda::error::Error;
-use glenda::interface::{DeviceService, MemoryService, ResourceService};
+use glenda::interface::{DeviceService, ResourceService, VSpaceService};
 use glenda::ipc::Badge;
 use glenda::protocol::device::LogicDeviceDesc;
 use glenda_drivers::interface::DriverService;
@@ -21,8 +21,14 @@ impl DriverService for BlockService<'_> {
         let (mmio, pa, size) = self.dev.get_mmio(Badge::null(), 0, MMIO_SLOT)?;
         log!("Got MMIO cap: addr={:#x}, size={:#x}", pa, size);
 
-        // 2. Map MMIO
-        self.res.mmap(Badge::null(), mmio, MMIO_VA, PGSIZE)?;
+        self.vspace_mgr.map_frame(
+            mmio,
+            MMIO_VA,
+            glenda::mem::Perms::READ | glenda::mem::Perms::WRITE,
+            1,
+            self.res,
+            self.cspace_mgr,
+        )?;
         glenda::arch::sync::fence();
         let irq_handler = self.dev.get_irq(Badge::null(), 0, IRQ_SLOT)?;
         log!("Got IRQ cap: {:?}", irq_handler);
@@ -50,7 +56,14 @@ impl DriverService for BlockService<'_> {
         log!("Allocating 4 pages of DMA memory...");
         let (paddr, frame) = self.res.dma_alloc(Badge::null(), 4, DMA_SLOT)?;
         log!("Mapping DMA: paddr={:#x}, len={:#x}", paddr, 4 * PGSIZE);
-        self.res.mmap(Badge::null(), frame, DMA_VA, 4 * PGSIZE)?;
+        self.vspace_mgr.map_frame(
+            frame,
+            DMA_VA,
+            glenda::mem::Perms::READ | glenda::mem::Perms::WRITE,
+            4,
+            self.res,
+            self.cspace_mgr,
+        )?;
         glenda::arch::sync::fence();
 
         // 7. Initialize VirtIOBlk

@@ -4,19 +4,27 @@ use alloc::vec::Vec;
 use glenda::arch::mem::PGSIZE;
 use glenda::client::{DeviceClient, ResourceClient};
 use glenda::error::Error;
-use glenda::interface::{DeviceService, MemoryService};
+use glenda::interface::{DeviceService, VSpaceService};
 use glenda::ipc::Badge;
+use glenda::utils::manager::{CSpaceManager, VSpaceManager};
 use glenda_drivers::interface::ProbeDriver;
 use virtio_common::consts::*;
 
 pub struct VirtioMmioDriver<'a> {
     dev: &'a mut DeviceClient,
     res: &'a mut ResourceClient,
+    vspace_mgr: &'a mut VSpaceManager,
+    cspace_mgr: &'a mut CSpaceManager,
 }
 
 impl<'a> VirtioMmioDriver<'a> {
-    pub fn new(dev: &'a mut DeviceClient, res: &'a mut ResourceClient) -> Self {
-        Self { dev, res }
+    pub fn new(
+        dev: &'a mut DeviceClient,
+        res: &'a mut ResourceClient,
+        vspace_mgr: &'a mut VSpaceManager,
+        cspace_mgr: &'a mut CSpaceManager,
+    ) -> Self {
+        Self { dev, res, vspace_mgr, cspace_mgr }
     }
 
     fn identify_device(&self, device_id: u32) -> Option<String> {
@@ -42,7 +50,14 @@ impl<'a> ProbeDriver for VirtioMmioDriver<'a> {
 
         // 2. Map it to our address space
         let pages = (size + PGSIZE - 1) / PGSIZE;
-        self.res.mmap(Badge::null(), frame, MAP_VA, pages * PGSIZE)?;
+        self.vspace_mgr.map_frame(
+            glenda::cap::Frame::from(frame.into()),
+            MAP_VA,
+            glenda::mem::Perms::READ | glenda::mem::Perms::WRITE,
+            pages,
+            self.res,
+            self.cspace_mgr,
+        )?;
 
         // 3. Read registers
         let mmio_ptr = MAP_VA as *const u32;
@@ -70,7 +85,7 @@ impl<'a> ProbeDriver for VirtioMmioDriver<'a> {
         }
 
         // 5. Cleanup mapping
-        self.res.munmap(Badge::null(), MAP_VA, pages * PGSIZE)?;
+        self.vspace_mgr.unmap(MAP_VA, pages)?;
         Ok(compats)
     }
 }

@@ -1,12 +1,15 @@
 use crate::layout::{BUFFER_SLOT, BUFFER_VA, RING_SLOT, RING_VA};
 use glenda::cap::{CapType, Endpoint, Frame};
 use glenda::client::ResourceClient;
+use glenda::mem::Perms;
+use glenda::arch::mem::PGSIZE;
 use glenda::error::Error;
-use glenda::interface::{MemoryService, ResourceService};
+use glenda::interface::{ResourceService, VSpaceService};
 use glenda::io::uring::{IOURING_OP_READ, IOURING_OP_SYNC, IOURING_OP_WRITE, IoUringSqe};
 use glenda::io::uring::{IoUringBuffer as IoUring, IoUringServer};
 use glenda::ipc::Badge;
 use glenda::mem::shm::SharedMemory;
+use glenda::utils::manager::{CSpaceManager, VSpaceManager};
 
 pub struct Ramdisk {
     data: &'static mut [u8],
@@ -35,6 +38,8 @@ impl Ramdisk {
     pub fn setup_buffer(
         &mut self,
         res: &mut ResourceClient,
+        vspace_mgr: &mut VSpaceManager,
+        cspace_mgr: &mut CSpaceManager,
         client_vaddr: usize,
         size: usize,
         paddr: u64,
@@ -42,7 +47,14 @@ impl Ramdisk {
         let frame = Frame::from(BUFFER_SLOT);
         let pages = (size + glenda::arch::mem::PGSIZE - 1) / glenda::arch::mem::PGSIZE;
 
-        res.mmap(Badge::null(), frame.clone(), BUFFER_VA, pages * glenda::arch::mem::PGSIZE)?;
+        vspace_mgr.map_frame(
+            frame.clone(),
+            BUFFER_VA,
+            glenda::mem::Perms::READ | glenda::mem::Perms::WRITE,
+            pages,
+            res,
+            cspace_mgr,
+        )?;
 
         // We use our own BUFFER_VA for data access, but we need to know the client's vaddr
         // to translate SQE addresses.
@@ -63,6 +75,8 @@ impl Ramdisk {
     pub fn setup_ring(
         &mut self,
         res: &mut ResourceClient,
+        vspace_mgr: &mut VSpaceManager,
+        cspace_mgr: &mut CSpaceManager,
         sq_entries: u32,
         cq_entries: u32,
         endpoint: Endpoint,
@@ -73,10 +87,17 @@ impl Ramdisk {
         // For 4 entries, we only need a few hundred bytes, so 1 page is plenty.
         let frame = Frame::from(res.alloc(Badge::null(), CapType::Frame, 1, RING_SLOT)?);
         // 2. Map it in our space
-        res.mmap(Badge::null(), frame, RING_VA, glenda::arch::mem::PGSIZE)?;
+        vspace_mgr.map_frame(
+            frame.clone(),
+            RING_VA,
+            Perms::READ | Perms::WRITE,
+            1,
+            res,
+            cspace_mgr,
+        )?;
         // 3. Init IoUring
         let ring = unsafe {
-            IoUring::new(RING_VA as *mut u8, glenda::arch::mem::PGSIZE, sq_entries, cq_entries)
+            IoUring::new(RING_VA as *mut u8, PGSIZE, sq_entries, cq_entries)
         };
         let mut server = IoUringServer::new(ring);
         server.set_client_notify(endpoint);

@@ -3,10 +3,11 @@ use glenda::cap::{CapPtr, Endpoint, Reply};
 use glenda::client::DeviceClient;
 use glenda::client::ResourceClient;
 use glenda::error::Error;
-use glenda_drivers::interface::TimerDriver;
 use glenda::interface::SystemService;
-use glenda_drivers::interface::DriverService;
 use glenda::ipc::{MsgTag, UTCB};
+use glenda::utils::manager::{CSpaceManager, VSpaceManager};
+use glenda_drivers::interface::DriverService;
+use glenda_drivers::interface::TimerDriver;
 use glenda_drivers::protocol::timer::{GET_TIME, SET_ALARM, SET_TIME, STOP_ALARM};
 use glenda_drivers::protocol::TIMER_PROTO;
 
@@ -19,10 +20,17 @@ pub struct RtcService<'a> {
 
     pub dev: &'a mut DeviceClient,
     pub res: &'a mut ResourceClient,
+    pub vspace: &'a mut VSpaceManager,
+    pub cspace: &'a mut CSpaceManager,
 }
 
 impl<'a> RtcService<'a> {
-    pub fn new(dev: &'a mut DeviceClient, res: &'a mut ResourceClient) -> Self {
+    pub fn new(
+        dev: &'a mut DeviceClient,
+        res: &'a mut ResourceClient,
+        vspace: &'a mut VSpaceManager,
+        cspace: &'a mut CSpaceManager,
+    ) -> Self {
         Self {
             rtc: None,
             endpoint: Endpoint::from(CapPtr::null()),
@@ -31,6 +39,8 @@ impl<'a> RtcService<'a> {
             running: false,
             dev,
             res,
+            vspace,
+            cspace,
         }
     }
 

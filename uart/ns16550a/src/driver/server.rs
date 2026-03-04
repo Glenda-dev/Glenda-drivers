@@ -1,11 +1,10 @@
 use crate::layout::*;
 use crate::UartService;
-use glenda::cap::{CapPtr, Endpoint, Frame, Reply};
+use glenda::cap::{CapPtr, Endpoint, Frame, Reply, CSPACE_CAP};
 use glenda::error::Error;
 use glenda::interface::SystemService;
 use glenda::ipc::server::{handle_call, handle_cap_call, handle_notify};
 use glenda::ipc::{Badge, MsgTag, UTCB};
-use glenda::utils::manager::CSpaceService;
 use glenda_drivers::interface::{DriverService, UartDriver};
 use glenda_drivers::protocol;
 
@@ -143,8 +142,7 @@ impl<'a> SystemService for UartService<'a> {
                     let sq = u.get_mr(0) as u32;
                     let cq = u.get_mr(1) as u32;
                     // Move cap to predefined slot
-                    let _ = s.cspace.root().delete(slot);
-                    s.cspace.root().move_cap(recv_slot, slot)?;
+                    CSPACE_CAP.move_cap(recv_slot, slot)?;
                     let notify_ep = Endpoint::from(slot);
                     let frame = s.setup_ring(sq, cq, notify_ep)?;
                     Ok(frame.cap())
@@ -157,11 +155,7 @@ impl<'a> SystemService for UartService<'a> {
                     let vaddr = u.get_mr(0);
                     let size = u.get_mr(1);
                     let paddr = u.get_mr(2) as u64;
-
-                    // Move cap to predefined slot
-                    let _ = s.cspace.root().delete(slot);
-                    s.cspace.root().move_cap(recv_slot, slot)?;
-
+                    CSPACE_CAP.move_cap(recv_slot, slot)?;
                     let frame = Frame::from(slot);
                     s.setup_shm(frame, vaddr, paddr, size)?;
                     Ok(())

@@ -16,6 +16,7 @@ use glenda::client::{DeviceClient, ResourceClient};
 use glenda::interface::{DeviceService, ResourceService};
 use glenda::ipc::Badge;
 use glenda::protocol::resource::{ResourceType, DEVICE_ENDPOINT};
+use glenda::utils::manager::{CSpaceManager, VSpaceManager};
 use glenda_drivers::interface::ProbeDriver;
 
 #[unsafe(no_mangle)]
@@ -23,6 +24,8 @@ fn main() -> usize {
     glenda::console::init_logging("VirtIO-MMIO");
     log!("Driver starting...");
     let mut res_client = ResourceClient::new(MONITOR_CAP);
+    let mut cspace_mgr = CSpaceManager::new(glenda::cap::CSPACE_CAP, 16);
+    let mut vspace_mgr = VSpaceManager::new(glenda::cap::VSPACE_CAP.into(), 0x1000_000, 0x1000_000);
 
     // Get Device Manager endpoint
     if let Err(e) =
@@ -33,7 +36,12 @@ fn main() -> usize {
     }
 
     let mut dev_client = DeviceClient::new(DEVICE_CAP);
-    let mut driver = driver::VirtioMmioDriver::new(&mut dev_client, &mut res_client);
+    let mut driver = driver::VirtioMmioDriver::new(
+        &mut dev_client,
+        &mut res_client,
+        &mut vspace_mgr,
+        &mut cspace_mgr,
+    );
 
     match driver.probe() {
         Ok(res) => {

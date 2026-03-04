@@ -4,9 +4,10 @@ use crate::layout::{BUFFER_SLOT, MMIO_SLOT, MMIO_VA, NOTIFY_SLOT};
 use glenda::cap::{CSPACE_CAP, CapPtr, ENDPOINT_SLOT, Endpoint, RECV_SLOT, Reply};
 use glenda::client::ResourceClient;
 use glenda::error::Error;
-use glenda::interface::{DeviceService, MemoryService, SystemService};
+use glenda::interface::{DeviceService, SystemService, VSpaceService};
 use glenda::ipc::server::{handle_call, handle_cap_call, handle_notify};
 use glenda::ipc::{Badge, MsgTag, UTCB};
+use glenda::utils::manager::{CSpaceManager, VSpaceManager};
 use glenda_drivers::protocol::BLOCK_PROTO;
 
 impl<'a> SystemService for RamdiskService<'a> {
@@ -18,7 +19,15 @@ impl<'a> SystemService for RamdiskService<'a> {
         log!("Got memory region: paddr={:#x}, size={:#x}", paddr, size);
 
         // 2. Map MMIO
-        self.res.mmap(Badge::null(), mmio, MMIO_VA, size)?;
+        let pages = (size + glenda::arch::mem::PGSIZE - 1) / glenda::arch::mem::PGSIZE;
+        self.vspace_mgr.map_frame(
+            glenda::cap::Frame::from(mmio.into()),
+            MMIO_VA,
+            glenda::mem::Perms::READ | glenda::mem::Perms::WRITE,
+            pages,
+            self.res,
+            self.cspace_mgr,
+        )?;
 
         // 3. Init hardware (ramdisk logic)
         let data = unsafe { core::slice::from_raw_parts_mut(MMIO_VA as *mut u8, size) };
@@ -155,7 +164,9 @@ impl<'a> SystemService for RamdiskService<'a> {
 
                 handle_call(u, |_| {
                     let res = unsafe { &mut *(s.res as *mut ResourceClient) };
-                    s.ramdisk.as_mut().unwrap().setup_buffer(res, client_vaddr, size, paddr)?;
+                    let vspace_mgr = unsafe { &mut *(s.vspace_mgr as *mut VSpaceManager) };
+                    let cspace_mgr = unsafe { &mut *(s.cspace_mgr as *mut CSpaceManager) };
+                    s.ramdisk.as_mut().unwrap().setup_buffer(res, vspace_mgr, cspace_mgr, client_vaddr, size, paddr)?;
                     Ok(0usize)
                 })
             },
@@ -170,10 +181,12 @@ impl<'a> SystemService for RamdiskService<'a> {
                 handle_cap_call(u, |_| {
                     // Transfer notification endpoint
                     let res = unsafe { &mut *(s.res as *mut ResourceClient) };
+                    let vspace_mgr = unsafe { &mut *(s.vspace_mgr as *mut VSpaceManager) };
+                    let cspace_mgr = unsafe { &mut *(s.cspace_mgr as *mut CSpaceManager) };
                     let notify_ep = Endpoint::from(NOTIFY_SLOT);
 
                     let ramdisk = s.ramdisk.as_mut().unwrap();
-                    let frame = ramdisk.setup_ring(res, sq, cq, notify_ep)?;
+                    let frame = ramdisk.setup_ring(res, vspace_mgr, cspace_mgr, sq, cq, notify_ep)?;
                     Ok(frame.cap())
                 })
             },

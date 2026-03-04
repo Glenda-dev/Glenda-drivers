@@ -12,13 +12,14 @@ mod server;
 use crate::layout::DEVICE_SLOT;
 use driver::Ramdisk;
 use glenda::cap::{
-    CapPtr, CapType, ENDPOINT_CAP, ENDPOINT_SLOT, Endpoint, MONITOR_CAP, RECV_SLOT, REPLY_SLOT,
-    Reply,
+    CSPACE_CAP, CapPtr, CapType, ENDPOINT_CAP, ENDPOINT_SLOT, Endpoint, MONITOR_CAP, RECV_SLOT,
+    REPLY_SLOT, Reply, VSPACE_CAP,
 };
 use glenda::client::{DeviceClient, ResourceClient};
 use glenda::interface::{ResourceService, SystemService};
 use glenda::ipc::Badge;
 use glenda::protocol::resource::{DEVICE_ENDPOINT, ResourceType};
+use glenda::utils::manager::{CSpaceManager, VSpaceManager};
 
 pub struct RamdiskService<'a> {
     ramdisk: Option<Ramdisk>,
@@ -29,11 +30,18 @@ pub struct RamdiskService<'a> {
 
     dev: &'a mut DeviceClient,
     res: &'a mut ResourceClient,
+    vspace_mgr: &'a mut VSpaceManager,
+    cspace_mgr: &'a mut CSpaceManager,
     connected_client: Option<usize>,
 }
 
 impl<'a> RamdiskService<'a> {
-    pub fn new(dev: &'a mut DeviceClient, res: &'a mut ResourceClient) -> Self {
+    pub fn new(
+        dev: &'a mut DeviceClient,
+        res: &'a mut ResourceClient,
+        vspace_mgr: &'a mut VSpaceManager,
+        cspace_mgr: &'a mut CSpaceManager,
+    ) -> Self {
         Self {
             ramdisk: None,
             endpoint: Endpoint::from(CapPtr::null()),
@@ -42,6 +50,8 @@ impl<'a> RamdiskService<'a> {
             running: false,
             dev,
             res,
+            vspace_mgr,
+            cspace_mgr,
             connected_client: None,
         }
     }
@@ -53,6 +63,9 @@ fn main() -> usize {
     log!("Starting Ramdisk driver...");
 
     let mut res_client = ResourceClient::new(MONITOR_CAP);
+    let mut vspace_mgr = VSpaceManager::new(VSPACE_CAP.into(), 0x1000_0000, 0x1000_0000);
+    let mut cspace_mgr = CSpaceManager::new(CSPACE_CAP, 16);
+
     res_client
         .get_cap(Badge::null(), ResourceType::Endpoint, DEVICE_ENDPOINT, DEVICE_SLOT)
         .expect("Failed to get device endpoint cap");
@@ -62,7 +75,8 @@ fn main() -> usize {
         .alloc(Badge::null(), CapType::Endpoint, 0, ENDPOINT_SLOT)
         .expect("Failed to allocate endpoint cap for service");
 
-    let mut service = RamdiskService::new(&mut dev_client, &mut res_client);
+    let mut service =
+        RamdiskService::new(&mut dev_client, &mut res_client, &mut vspace_mgr, &mut cspace_mgr);
     service.listen(ENDPOINT_CAP, REPLY_SLOT, RECV_SLOT).expect("Failed to listen");
 
     if let Err(e) = SystemService::init(&mut service) {

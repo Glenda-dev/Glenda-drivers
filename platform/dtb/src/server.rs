@@ -8,7 +8,7 @@ use glenda::protocol::device::{LogicDeviceDesc, LogicDeviceType};
 use glenda_drivers::interface::DriverService;
 use glenda_drivers::protocol;
 
-impl SystemService for DtbDriver {
+impl<'a> SystemService for DtbDriver<'a> {
     fn init(&mut self) -> Result<(), Error> {
         // 1. Initialize hardware parsing (map FDT, etc.)
         DriverService::init(self)?;
@@ -89,7 +89,7 @@ impl SystemService for DtbDriver {
     }
 }
 
-impl DtbDriver {
+impl<'a> DtbDriver<'a> {
     pub fn handle_off(&mut self, _utcb: &mut UTCB) -> Result<(), Error> {
         if !self.has_power_off {
             return Err(Error::NotSupported);

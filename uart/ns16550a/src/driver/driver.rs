@@ -3,7 +3,8 @@ use crate::Ns16550a;
 use crate::UartService;
 use glenda::cap::{Rights, CSPACE_CAP};
 use glenda::error::Error;
-use glenda::interface::{DeviceService, MemoryService};
+use glenda::interface::DeviceService;
+use glenda::interface::VSpaceService;
 use glenda::ipc::Badge;
 use glenda_drivers::interface::DriverService;
 
@@ -13,8 +14,16 @@ impl<'a> DriverService for UartService<'a> {
 
         let (mmio, pa, size) = self.dev.get_mmio(Badge::null(), 0, MMIO_SLOT)?;
         log!("Got MMIO cap: addr={:#x}, size={:#x}", pa, size);
-        // 2. Map MMIO
-        self.res.mmap(Badge::null(), mmio, MMIO_VA, 0x1000)?;
+
+        self.vspace.map_frame(
+            mmio,
+            MMIO_VA,
+            glenda::mem::Perms::READ | glenda::mem::Perms::WRITE,
+            1,
+            self.res,
+            self.cspace,
+        )?;
+
         let irq_badge = Badge::new(IRQ_BADGE);
         let irq_handler = self.dev.get_irq(Badge::null(), 0, IRQ_SLOT)?;
 

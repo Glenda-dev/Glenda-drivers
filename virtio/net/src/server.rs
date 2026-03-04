@@ -1,13 +1,13 @@
 use crate::layout::SHM_VA;
 use crate::net::VirtIONet;
-use glenda::cap::{CapPtr, Endpoint, Frame, Reply};
+use glenda::cap::{CapPtr, Endpoint, Frame, Reply, CSPACE_CAP};
 use glenda::client::{DeviceClient, ResourceClient};
 use glenda::error::Error;
-use glenda::interface::{MemoryService, ResourceService, SystemService};
+use glenda::interface::{CSpaceService, ResourceService, SystemService, VSpaceService};
 use glenda::io::uring::{IoUringBuffer as IoUring, IoUringServer};
 use glenda::ipc::server::{handle_call, handle_cap_call, handle_notify};
 use glenda::ipc::{Badge, MsgTag, UTCB};
-use glenda::utils::manager::{CSpaceManager, CSpaceService};
+use glenda::utils::manager::{CSpaceManager, VSpaceManager};
 use glenda_drivers::interface::{DriverService, NetDriver};
 use glenda_drivers::protocol::net::MacAddress;
 use glenda_drivers::protocol::{net, NET_PROTO};
@@ -19,6 +19,7 @@ pub struct NetService<'a> {
     pub dev: &'a mut DeviceClient,
     pub res: &'a mut ResourceClient,
     pub cspace_mgr: &'a mut CSpaceManager,
+    pub vspace_mgr: &'a mut VSpaceManager,
     pub recv: CapPtr,
     pub connected_client: Option<usize>,
 }
@@ -30,6 +31,7 @@ impl<'a> NetService<'a> {
         dev: &'a mut DeviceClient,
         res: &'a mut ResourceClient,
         cspace_mgr: &'a mut CSpaceManager,
+        vspace_mgr: &'a mut VSpaceManager,
     ) -> Self {
         Self {
             net: None,
@@ -38,6 +40,7 @@ impl<'a> NetService<'a> {
             dev,
             res,
             cspace_mgr,
+            vspace_mgr,
             recv: CapPtr::null(),
             connected_client: None,
         }
@@ -55,11 +58,13 @@ impl<'a> NetService<'a> {
         let (_, frame) = self.res.dma_alloc(Badge::null(), 1, slot)?;
 
         // Map the DMA frame to our virtual address space
-        self.res.mmap(
-            Badge::null(),
+        self.vspace_mgr.map_frame(
             frame.clone(),
             crate::layout::RING_VA,
-            glenda::arch::mem::PGSIZE,
+            glenda::mem::Perms::READ | glenda::mem::Perms::WRITE,
+            1,
+            self.res,
+            self.cspace_mgr,
         )?;
         glenda::arch::sync::fence();
 
@@ -89,7 +94,14 @@ impl<'a> NetService<'a> {
         paddr: u64,
         size: usize,
     ) -> Result<(), Error> {
-        self.res.mmap(Badge::null(), frame, SHM_VA, size)?;
+        self.vspace_mgr.map_frame(
+            frame.clone(),
+            SHM_VA,
+            glenda::mem::Perms::READ | glenda::mem::Perms::WRITE,
+            size / 4096,
+            self.res,
+            self.cspace_mgr,
+        )?;
 
         if let Some(net) = self.net.as_mut() {
             // Note: net-internal shm will use local SHM_VA for access
@@ -128,42 +140,39 @@ impl<'a> SystemService for NetService<'a> {
     }
 
     fn run(&mut self) -> Result<(), Error> {
+        // Clear receive slot before receiving new messages
         loop {
-            // Clear receive slot before receiving new messages
-            let _ = self.cspace_mgr.root().delete(self.recv);
-            loop {
-                let mut utcb = unsafe { UTCB::new() };
-                utcb.clear();
-                utcb.set_reply_window(self.reply_cap.cap());
-                utcb.set_recv_window(self.recv);
-                match self.endpoint.recv(&mut utcb) {
-                    Ok(_) => {}
-                    Err(e) => {
-                        error!("Recv error: {:?}", e);
-                        continue;
-                    }
-                };
-
-                let badge = utcb.get_badge();
-                let proto = utcb.get_msg_tag().proto();
-                let label = utcb.get_msg_tag().label();
-
-                let res = self.dispatch(&mut utcb);
-                if let Err(e) = res {
-                    if e == Error::Success {
-                        continue;
-                    }
-                    error!(
-                        "Failed to dispatch message for {}: {:?}, proto={:#x}, label={:#x}",
-                        badge, e, proto, label
-                    );
-                    utcb.set_msg_tag(MsgTag::err());
-                    utcb.set_mr(0, e as usize);
+            let mut utcb = unsafe { UTCB::new() };
+            utcb.clear();
+            utcb.set_reply_window(self.reply_cap.cap());
+            utcb.set_recv_window(self.recv);
+            match self.endpoint.recv(&mut utcb) {
+                Ok(_) => {}
+                Err(e) => {
+                    error!("Recv error: {:?}", e);
+                    continue;
                 }
+            };
 
-                if let Err(e) = self.reply(&mut utcb) {
-                    error!("Reply failed: {:?}", e);
+            let badge = utcb.get_badge();
+            let proto = utcb.get_msg_tag().proto();
+            let label = utcb.get_msg_tag().label();
+
+            let res = self.dispatch(&mut utcb);
+            if let Err(e) = res {
+                if e == Error::Success {
+                    continue;
                 }
+                error!(
+                    "Failed to dispatch message for {}: {:?}, proto={:#x}, label={:#x}",
+                    badge, e, proto, label
+                );
+                utcb.set_msg_tag(MsgTag::err());
+                utcb.set_mr(0, e as usize);
+            }
+
+            if let Err(e) = self.reply(&mut utcb) {
+                error!("Reply failed: {:?}", e);
             }
         }
     }
@@ -234,7 +243,7 @@ impl<'a> SystemService for NetService<'a> {
                     let paddr = u.get_mr(2) as u64;
                     // Move the cap from recv window to a temporary slot
                     let slot = s.cspace_mgr.alloc(s.res)?;
-                    s.cspace_mgr.root().move_cap(s.recv, slot)?;
+                    CSPACE_CAP.move_cap(s.recv, slot)?;
                     let frame = Frame::from(slot);
                     s.setup_shm(frame, vaddr, paddr, size)?;
                     Ok(())
@@ -246,7 +255,7 @@ impl<'a> SystemService for NetService<'a> {
                     let cq = u.get_mr(1) as u32;
 
                     let slot = s.cspace_mgr.alloc(s.res)?;
-                    s.cspace_mgr.root().move_cap(s.recv, slot)?;
+                    CSPACE_CAP.move_cap(s.recv, slot)?;
                     let notify_ep = Endpoint::from(slot);
 
                     let frame = s.setup_ring(sq, cq, notify_ep, CapPtr::null())?;

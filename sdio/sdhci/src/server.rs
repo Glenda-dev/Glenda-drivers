@@ -2,14 +2,15 @@ use crate::sdhci::Sdhci;
 use glenda::cap::{CapPtr, Endpoint, Reply};
 use glenda::client::DeviceClient;
 use glenda::client::ResourceClient;
-use glenda::error::Error;
-use glenda::drivers::interface::SdioDriver;
-use glenda::interface::SystemService;
 use glenda::drivers::interface::DriverService;
-use glenda::ipc::{MsgTag, UTCB};
-use glenda::protocol::device::sdio::SdioCommand;
+use glenda::drivers::interface::SdioDriver;
+use glenda::drivers::protocol::sdio::SdioCommand;
 use glenda::drivers::protocol::sdio::SEND_COMMAND;
 use glenda::drivers::protocol::SDIO_PROTO;
+use glenda::error::Error;
+use glenda::interface::SystemService;
+use glenda::ipc::{MsgTag, UTCB};
+use glenda::utils::manager::{CSpaceManager, VSpaceManager};
 
 pub struct SdhciService<'a> {
     pub sdhci: Option<Sdhci>,
@@ -20,10 +21,17 @@ pub struct SdhciService<'a> {
 
     pub dev: &'a mut DeviceClient,
     pub res: &'a mut ResourceClient,
+    pub vspace: &'a mut VSpaceManager,
+    pub cspace: &'a mut CSpaceManager,
 }
 
 impl<'a> SdhciService<'a> {
-    pub fn new(dev: &'a mut DeviceClient, res: &'a mut ResourceClient) -> Self {
+    pub fn new(
+        dev: &'a mut DeviceClient,
+        res: &'a mut ResourceClient,
+        vspace: &'a mut VSpaceManager,
+        cspace: &'a mut CSpaceManager,
+    ) -> Self {
         Self {
             sdhci: None,
             endpoint: Endpoint::from(CapPtr::null()),
@@ -32,6 +40,8 @@ impl<'a> SdhciService<'a> {
             running: false,
             dev,
             res,
+            vspace,
+            cspace,
         }
     }
 

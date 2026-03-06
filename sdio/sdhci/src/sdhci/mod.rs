@@ -1,6 +1,6 @@
 use core::ptr::{read_volatile, write_volatile};
+use glenda::drivers::protocol::sdio::*;
 use glenda::error::Error;
-use glenda::protocol::device::sdio::*;
 
 pub struct Sdhci {
     base: usize,

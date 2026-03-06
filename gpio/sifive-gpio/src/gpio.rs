@@ -1,6 +1,6 @@
 use core::ptr::{read_volatile, write_volatile};
+use glenda::drivers::protocol::gpio::*;
 use glenda::error::Error;
-use glenda::protocol::device::gpio::*;
 
 const GPIO_VALUE: usize = 0x00;
 const GPIO_INPUT_EN: usize = 0x04;

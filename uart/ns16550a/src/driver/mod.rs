@@ -2,7 +2,7 @@ mod device;
 mod driver;
 mod server;
 
-use crate::layout::RING_VA;
+use crate::layout::{RING_VA, SHM_VA};
 use crate::Ns16550a;
 use glenda::cap::{CapPtr, Endpoint, Frame, Reply};
 use glenda::client::{DeviceClient, ResourceClient};
@@ -80,17 +80,18 @@ impl<'a> UartService<'a> {
         paddr: u64,
         size: usize,
     ) -> Result<(), Error> {
-        log!(
-            "Setting up SHM: frame={}, vaddr={}, paddr={} ,size={}",
-            frame.cap(),
-            vaddr,
-            paddr,
-            size
-        );
+        self.vspace.map_frame(
+            frame.clone(),
+            SHM_VA,
+            glenda::mem::Perms::READ | glenda::mem::Perms::WRITE,
+            1,
+            self.res,
+            self.cspace,
+        )?;
+
         if let Some(uart) = self.uart.as_mut() {
-            uart.setup_shm(frame, vaddr, paddr, size)
-        } else {
-            Err(Error::NotInitialized)
+            uart.setup_shm(frame, vaddr, paddr, size)?;
         }
+        Ok(())
     }
 }

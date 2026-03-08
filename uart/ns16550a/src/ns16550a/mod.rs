@@ -3,13 +3,14 @@ mod consts;
 #[cfg(feature = "unicode")]
 mod utf8;
 
+use crate::layout::SHM_VA;
 use config::*;
 use consts::*;
 use glenda::cap::{Frame, IrqHandler};
+use glenda::drivers::interface::UartDriver;
 use glenda::error::Error;
 use glenda::io::uring::IoUringServer;
 use glenda::mem::shm::SharedMemory;
-use glenda::drivers::interface::UartDriver;
 #[cfg(feature = "unicode")]
 use utf8::Utf8Decoder;
 
@@ -20,6 +21,7 @@ pub struct Ns16550a {
     decoder: Utf8Decoder,
     pub ring: Option<IoUringServer>,
     pub shm: Option<SharedMemory>,
+    pub pending_read: Option<glenda::io::uring::IoUringSqe>,
 }
 
 impl Ns16550a {
@@ -31,6 +33,7 @@ impl Ns16550a {
             decoder: Utf8Decoder::new(),
             ring: None,
             shm: None,
+            pending_read: None,
         }
     }
 
@@ -41,22 +44,23 @@ impl Ns16550a {
     pub fn setup_shm(
         &mut self,
         frame: Frame,
-        vaddr: usize,
+        client_vaddr: usize,
         paddr: u64,
         size: usize,
     ) -> Result<(), Error> {
-        let mut shm = SharedMemory::new(frame, vaddr, size);
+        let mut shm = SharedMemory::new(frame, SHM_VA, size);
+        shm.set_client_vaddr(client_vaddr);
         shm.set_paddr(paddr);
         self.shm = Some(shm);
         Ok(())
     }
 
-    pub unsafe fn read(&self, offset: usize) -> u8 {
+    pub unsafe fn read_reg(&self, offset: usize) -> u8 {
         let ptr = (self.base + offset) as *const u8;
         core::ptr::read_volatile(ptr)
     }
 
-    pub unsafe fn write(&self, offset: usize, val: u8) {
+    pub unsafe fn write_reg(&self, offset: usize, val: u8) {
         let ptr = (self.base + offset) as *mut u8;
         core::ptr::write_volatile(ptr, val);
     }
@@ -65,7 +69,7 @@ impl Ns16550a {
         self.set_baud_rate(DEFAULT_BAUD_RATE);
         unsafe {
             // Enable RX interrupt
-            self.write(IER, IER_RX_ENABLE);
+            self.write_reg(IER, IER_RX_ENABLE);
         }
     }
 
@@ -73,59 +77,91 @@ impl Ns16550a {
         let divisor = calculate_divisor(baud);
         unsafe {
             // Disable interrupts during init
-            self.write(IER, 0x00);
+            self.write_reg(IER, 0x00);
 
             // Enable DLAB to set baud rate
-            self.write(LCR, LCR_DLAB);
+            self.write_reg(LCR, LCR_DLAB);
 
             // Set divisor
-            self.write(DLL, (divisor & 0xFF) as u8);
-            self.write(DLM, (divisor >> 8) as u8);
+            self.write_reg(DLL, (divisor & 0xFF) as u8);
+            self.write_reg(DLM, (divisor >> 8) as u8);
 
             // 8 bits, no parity, one stop bit (8N1), disable DLAB
-            self.write(LCR, LCR_DATA_BITS_8 | LCR_STOP_BITS_1 | LCR_PARITY_NONE);
+            self.write_reg(LCR, LCR_DATA_BITS_8 | LCR_STOP_BITS_1 | LCR_PARITY_NONE);
 
             // Enable FIFO, clear them, with 14-byte threshold
-            self.write(FCR, FCR_FIFO_ENABLE | FCR_FIFO_RX_RESET | FCR_FIFO_TX_RESET);
+            self.write_reg(FCR, FCR_FIFO_ENABLE | FCR_FIFO_RX_RESET | FCR_FIFO_TX_RESET);
 
             // IRQs enabled, RTS/DTR set
-            self.write(MCR, MCR_OUT2 | MCR_RTS | MCR_DTR);
+            self.write_reg(MCR, MCR_OUT2 | MCR_RTS | MCR_DTR);
         }
     }
 
-    pub fn handle_irq(&mut self) -> Option<u8> {
-        unsafe {
-            let iir = self.read(IIR);
-            if iir & IIR_NO_INTERRUPT == 0 {
-                // Interrupt pending
-                return self.getchar();
-            }
-        }
-        None
-    }
+    pub fn handle_irq(&mut self) -> Result<(), Error> {
+        let mut count = 0;
+        let mut bytes = [0u8; 16];
 
-    pub fn handle_char(&mut self, b: u8) {
-        #[cfg(feature = "unicode")]
-        {
-            if b < 128 {
-                self.process_char(b as char);
-            } else {
-                match self.decoder.push(b) {
-                    utf8::Utf8PushResult::Completed(c) => self.process_char(c),
-                    utf8::Utf8PushResult::Invalid => {}
-                    utf8::Utf8PushResult::Pending => {}
+        loop {
+            unsafe {
+                let iir = self.read_reg(IIR);
+                if iir & IIR_NO_INTERRUPT != 0 {
+                    break;
+                }
+
+                if let Some(c) = self.getchar() {
+                    if count < bytes.len() {
+                        bytes[count] = c;
+                        count += 1;
+                    }
+                } else {
+                    break;
                 }
             }
         }
-        #[cfg(not(feature = "unicode"))]
-        {
-            // Echo back
-            if b == b'\r' {
-                self.putchar(b'\n');
-            } else {
-                self.putchar(b);
+
+        if count > 0 {
+            if let Some(sqe) = self.pending_read.take() {
+                let addr = sqe.addr;
+                let len = core::cmp::min(sqe.len as usize, count);
+                let user_data = sqe.user_data;
+
+                if let Some(shm) = &self.shm {
+                    let client_vaddr = shm.client_vaddr();
+                    if (addr as usize) >= client_vaddr
+                        && (addr as usize) + len <= client_vaddr + shm.size()
+                    {
+                        let server_vaddr = shm.vaddr() + (addr as usize - client_vaddr);
+                        unsafe {
+                            core::ptr::copy_nonoverlapping(
+                                bytes.as_ptr(),
+                                server_vaddr as *mut u8,
+                                len,
+                            );
+                        }
+                    } else {
+                        error!(
+                            "NS16550A IRQ error: Read address {:#x} (len {}) out of SHM boundary",
+                            addr, len
+                        );
+                        if let Some(mut ring) = self.ring.take() {
+                            let _ = ring.complete(user_data, -(Error::InvalidArgs as i32));
+                            self.ring = Some(ring);
+                        }
+                        return Ok(());
+                    }
+                } else {
+                    unsafe {
+                        core::ptr::copy_nonoverlapping(bytes.as_ptr(), addr as *mut u8, len);
+                    }
+                }
+
+                if let Some(mut ring) = self.ring.take() {
+                    let _ = ring.complete(user_data, len as i32);
+                    self.ring = Some(ring);
+                }
             }
         }
+        Ok(())
     }
 
     pub fn handle_sq(&mut self) {
@@ -138,48 +174,63 @@ impl Ns16550a {
                         let user_data = sqe.user_data;
 
                         // Use SHM if available, otherwise assume linear mapping (not safe but compatible)
-                        let buf = if let Some(shm) = &self.shm {
+                        if let Some(shm) = &self.shm {
                             // Convert client-side addr to server-side vaddr
-                            let server_vaddr = shm.vaddr() + (addr as usize - shm.client_vaddr());
-                            unsafe { core::slice::from_raw_parts(server_vaddr as *const u8, len) }
-                        } else {
-                            unsafe { core::slice::from_raw_parts(addr as *const u8, len) }
-                        };
+                            let client_vaddr = shm.client_vaddr();
+                            let server_vaddr_base = shm.vaddr();
 
-                        for &b in buf {
-                            self.putchar(b);
+                            if (addr as usize) < client_vaddr
+                                || (addr as usize) + len > client_vaddr + shm.size()
+                            {
+                                error!("NS16550A error: Write address {:#x} (len {}) out of SHM boundary", addr, len);
+                                let _ = ring.complete(user_data, -(Error::InvalidArgs as i32));
+                                continue;
+                            }
+
+                            let server_vaddr = server_vaddr_base + (addr as usize - client_vaddr);
+                            let buf = unsafe {
+                                core::slice::from_raw_parts(server_vaddr as *const u8, len)
+                            };
+                            for &b in buf {
+                                self.putchar(b);
+                            }
                         }
                         let _ = ring.complete(user_data, len as i32);
                     }
                     glenda::io::uring::IOURING_OP_READ => {
                         // For UART, READ SQEs could be queued and completed when data arrives.
-                        // For now, let's just do a synchronous check.
                         let addr = sqe.addr;
-                        let len = sqe.len as usize;
                         let user_data = sqe.user_data;
 
                         let mut count = 0;
-                        while count < len {
-                            if let Some(c) = self.getchar() {
-                                if let Some(shm) = &self.shm {
-                                    let server_vaddr =
-                                        shm.vaddr() + (addr as usize - shm.client_vaddr()) + count;
+                        if let Some(c) = self.getchar() {
+                            if let Some(shm) = &self.shm {
+                                let client_vaddr = shm.client_vaddr();
+                                if (addr as usize) >= client_vaddr
+                                    && (addr as usize) < client_vaddr + shm.size()
+                                {
+                                    let server_vaddr = shm.vaddr() + (addr as usize - client_vaddr);
                                     unsafe { *(server_vaddr as *mut u8) = c };
+                                    count = 1;
                                 } else {
-                                    unsafe { *((addr as usize + count) as *mut u8) = c };
+                                    error!(
+                                        "NS16550A error: Read address {:#x} out of SHM boundary",
+                                        addr
+                                    );
+                                    let _ = ring.complete(user_data, -(Error::InvalidArgs as i32));
+                                    continue;
                                 }
-                                count += 1;
-                            } else {
-                                break;
                             }
                         }
 
                         if count > 0 {
                             let _ = ring.complete(user_data, count as i32);
                         } else {
-                            // If no data, we should probably re-queue or return 0.
-                            // To be truly async, we'd store the SQE and complete it in handle_irq.
-                            let _ = ring.complete(user_data, 0);
+                            // If no data, we store the SQE and complete it in handle_irq.
+                            // Ensure any previous pending read is not overwritten if it hasn't been completed.
+                            if self.pending_read.is_none() {
+                                self.pending_read = Some(sqe);
+                            }
                         }
                     }
                     _ => {
@@ -197,46 +248,8 @@ impl Ns16550a {
         // unless we were flow-controlled.
     }
 
-    fn process_char(&mut self, c: char) {
-        match c {
-            '\r' => {
-                self.putchar('\n' as u8);
-                #[cfg(feature = "unicode")]
-                utf8::CONSOLE_ECHO.lock().clear_line();
-            }
-            '\x08' | '\x7f' => {
-                // Backspace
-                #[cfg(feature = "unicode")]
-                {
-                    let mut echo = utf8::CONSOLE_ECHO.lock();
-                    if let Some(w) = echo.pop_width() {
-                        for _ in 0..w {
-                            self.putchar(0x08);
-                        }
-                        for _ in 0..w {
-                            self.putchar(b' ');
-                        }
-                        for _ in 0..w {
-                            self.putchar(0x08);
-                        }
-                    }
-                }
-                #[cfg(not(feature = "unicode"))]
-                {
-                    self.putchar(0x08);
-                    self.putchar(b' ');
-                    self.putchar(0x08);
-                }
-            }
-            _ => {
-                self.put_unicode_char(c);
-                #[cfg(feature = "unicode")]
-                {
-                    let w = utf8::char_display_width(c);
-                    utf8::CONSOLE_ECHO.lock().push_width(w);
-                }
-            }
-        }
+    fn process_char(&mut self, _c: char) {
+        // Obsolete: Driver is now data-agnostic.
     }
 
     fn put_unicode_char(&self, c: char) {
@@ -249,8 +262,8 @@ impl Ns16550a {
 
     fn getchar(&self) -> Option<u8> {
         unsafe {
-            if self.read(LSR) & LSR_DATA_READY != 0 {
-                Some(self.read(RBR))
+            if self.read_reg(LSR) & LSR_DATA_READY != 0 {
+                Some(self.read_reg(RBR))
             } else {
                 None
             }
@@ -259,25 +272,33 @@ impl Ns16550a {
 
     fn putchar(&self, c: u8) {
         unsafe {
-            while self.read(LSR) & LSR_THR_EMPTY == 0 {}
-            self.write(THR, c);
+            while self.read_reg(LSR) & LSR_THR_EMPTY == 0 {}
+            self.write_reg(THR, c);
         }
     }
 }
 
 impl UartDriver for Ns16550a {
-    fn put_char(&mut self, c: u8) {
-        self.putchar(c);
-    }
-
-    fn get_char(&mut self) -> Option<u8> {
-        self.getchar()
-    }
-
-    fn put_str(&mut self, s: &str) {
-        for c in s.bytes() {
-            self.putchar(c);
+    fn write(&mut self, buf: &[u8]) -> Result<usize, Error> {
+        if let Ok(s) = core::str::from_utf8(buf) {
+            log!("UART Write Sync ({} bytes): {}", buf.len(), s);
+        } else {
+            log!("UART Write Sync ({} bytes): {:?}", buf.len(), buf);
         }
+        Ok(buf.len())
+    }
+
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
+        let mut count = 0;
+        while count < buf.len() {
+            if let Some(c) = self.getchar() {
+                buf[count] = c;
+                count += 1;
+            } else {
+                break;
+            }
+        }
+        Ok(count)
     }
 
     fn set_baud_rate(&mut self, baud: u32) {
@@ -287,7 +308,7 @@ impl UartDriver for Ns16550a {
 
 impl core::fmt::Write for Ns16550a {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
-        self.put_str(s);
+        let _ = self.write(s.as_bytes());
         Ok(())
     }
 }

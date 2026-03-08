@@ -243,7 +243,7 @@ impl<'a> SystemService for BlockService<'a> {
 
                     let frame = Frame::from(slot);
                     s.setup_shm(frame, vaddr, paddr, size)?;
-                    Ok(0usize)
+                    Ok(())
                 })
             },
             (BLOCK_PROTO, block::SETUP_RING) => |s: &mut Self, u: &mut UTCB| {

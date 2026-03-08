@@ -56,7 +56,7 @@ impl VirtIOBlk {
 
     pub fn setup_shm(
         &mut self,
-        _frame: Frame,
+        frame: Frame,
         vaddr: usize,
         paddr: u64,
         size: usize,
@@ -65,7 +65,7 @@ impl VirtIOBlk {
         // we just store the addresses.
         // Actually, the service layer didn't map it for us yet.
         // But for VirtIO, we mainly need the paddr.
-        let mut shm = SharedMemory::from_frame(_frame, vaddr, size);
+        let mut shm = SharedMemory::from_frame(frame, vaddr, size);
         shm.set_client_vaddr(vaddr);
         shm.set_paddr(paddr);
         self.buffer = Some(shm);

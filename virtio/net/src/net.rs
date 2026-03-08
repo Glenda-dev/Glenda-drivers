@@ -61,12 +61,12 @@ impl VirtIONet {
 
     pub fn setup_shm(
         &mut self,
-        _frame: Frame,
+        frame: Frame,
         vaddr: usize,
         paddr: u64,
         size: usize,
     ) -> core::result::Result<(), glenda::error::Error> {
-        let mut shm = SharedMemory::from_frame(_frame, vaddr, size);
+        let mut shm = SharedMemory::from_frame(frame, vaddr, size);
         shm.set_client_vaddr(vaddr);
         shm.set_paddr(paddr);
         self.buffer = Some(shm);

@@ -1,18 +1,18 @@
-pub use crate::layout::{MAP_VA, MMIO_SLOT};
+use crate::layout::{MAP_VA, MMIO_SLOT};
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
-use glenda::cap::{CapPtr, Endpoint, Reply, Frame};
-use glenda::client::{DeviceClient, ResourceClient};
 use glenda::arch::mem::PGSIZE;
-use glenda::mem::Perms;
+use glenda::cap::{CapPtr, Endpoint, Frame, Reply};
+use glenda::client::{DeviceClient, ResourceClient};
+use glenda::drivers::interface::DriverService;
+use glenda::drivers::protocol::thermal;
 use glenda::error::Error;
 use glenda::interface::{DeviceService, VSpaceService};
 use glenda::ipc::Badge;
-use glenda::utils::align::align_up;
+use glenda::mem::Perms;
 use glenda::protocol::device::{DeviceDesc, DeviceDescNode, MMIORegion};
+use glenda::utils::align::align_up;
 use glenda::utils::manager::{CSpaceManager, VSpaceManager};
-use glenda::drivers::interface::DriverService;
-use glenda::drivers::protocol::thermal;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PowerMethod {

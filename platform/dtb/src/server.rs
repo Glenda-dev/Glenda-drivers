@@ -1,12 +1,12 @@
 use crate::driver::{DtbDriver, PowerMethod};
 use glenda::cap::{CapPtr, Endpoint, Reply};
+use glenda::drivers::interface::DriverService;
+use glenda::drivers::protocol;
 use glenda::error::Error;
 use glenda::interface::{DeviceService, SystemService};
 use glenda::ipc::{Badge, MsgTag, UTCB};
 use glenda::ipc_dispatch;
 use glenda::protocol::device::{LogicDeviceDesc, LogicDeviceType};
-use glenda::drivers::interface::DriverService;
-use glenda::drivers::protocol;
 
 impl<'a> SystemService for DtbDriver<'a> {
     fn init(&mut self) -> Result<(), Error> {
@@ -16,6 +16,7 @@ impl<'a> SystemService for DtbDriver<'a> {
         // 2. Probe sub-devices and report to Device Manager (Unicorn)
         log!("Probing devices...");
         let devices = self.probe()?;
+        log!("Found {} devices", devices.len());
         self.dev_client.report(Badge::null(), devices)?;
 
         // 3. Register logic devices (Platform/Power and Thermal)

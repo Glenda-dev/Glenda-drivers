@@ -38,9 +38,9 @@ impl GoldfishRtc {
     }
 
     pub fn get_time(&self) -> u64 {
-        let low = self.read_reg(TIMER_TIME_LOW) as u64;
-        let high = self.read_reg(TIMER_TIME_HIGH) as u64;
-        let nanos = (high << 32) | low;
+        let low = self.read_reg(TIMER_TIME_LOW) as usize;
+        let high = self.read_reg(TIMER_TIME_HIGH) as usize;
+        let nanos = ((high as u64) << 32) | (low as u64);
         nanos
     }
 

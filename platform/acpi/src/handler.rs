@@ -92,8 +92,8 @@ impl acpi::Handler for HandlerWrapper {
         acpi::Handler::unmap_physical_region(&mapping);
         val
     }
-    fn read_u64(&self, address: usize) -> u64 {
-        let mapping = unsafe { self.map_physical_region::<u64>(address, 8) };
+    fn read_usize(&self, address: usize) -> usize {
+        let mapping = unsafe { self.map_physical_region::<usize>(address, 8) };
         let val = unsafe { *mapping.virtual_start.as_ptr() };
         acpi::Handler::unmap_physical_region(&mapping);
         val
@@ -113,8 +113,8 @@ impl acpi::Handler for HandlerWrapper {
         unsafe { *mapping.virtual_start.as_ptr() = value };
         acpi::Handler::unmap_physical_region(&mapping);
     }
-    fn write_u64(&self, address: usize, value: u64) {
-        let mapping = unsafe { self.map_physical_region::<u64>(address, 8) };
+    fn write_usize(&self, address: usize, value: usize) {
+        let mapping = unsafe { self.map_physical_region::<usize>(address, 8) };
         unsafe { *mapping.virtual_start.as_ptr() = value };
         acpi::Handler::unmap_physical_region(&mapping);
     }
@@ -154,11 +154,11 @@ impl acpi::Handler for HandlerWrapper {
     fn write_pci_u32(&self, _address: acpi::PciAddress, _offset: u16, _value: u32) {
         todo!()
     }
-    fn nanos_since_boot(&self) -> u64 {
+    fn nanos_since_boot(&self) -> usize {
         0
     }
-    fn stall(&self, _nanoseconds: u64) {}
-    fn sleep(&self, _milliseconds: u64) {}
+    fn stall(&self, _nanoseconds: usize) {}
+    fn sleep(&self, _milliseconds: usize) {}
 
     fn create_mutex(&self) -> acpi::Handle {
         acpi::Handle(0)
@@ -179,8 +179,8 @@ impl aml::Handler for HandlerWrapper {
     fn read_u32(&self, address: usize) -> u32 {
         acpi::Handler::read_u32(self, address)
     }
-    fn read_u64(&self, address: usize) -> u64 {
-        acpi::Handler::read_u64(self, address)
+    fn read_usize(&self, address: usize) -> usize {
+        acpi::Handler::read_usize(self, address)
     }
     fn write_u8(&mut self, address: usize, value: u8) {
         acpi::Handler::write_u8(self, address, value)
@@ -191,8 +191,8 @@ impl aml::Handler for HandlerWrapper {
     fn write_u32(&mut self, address: usize, value: u32) {
         acpi::Handler::write_u32(self, address, value)
     }
-    fn write_u64(&mut self, address: usize, value: u64) {
-        acpi::Handler::write_u64(self, address, value)
+    fn write_usize(&mut self, address: usize, value: usize) {
+        acpi::Handler::write_usize(self, address, value)
     }
     fn read_io_u8(&self, _port: u16) -> u8 {
         0

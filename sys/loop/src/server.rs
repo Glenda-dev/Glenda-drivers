@@ -21,7 +21,7 @@ impl BadgedFileClient {
         utcb.set_mr(3, self.badge);
 
         self.endpoint.call(&mut utcb)?;
-        let size = utcb.get_mr(0) as u64;
+        let size = utcb.get_mr(0) as usize;
         let mode = utcb.get_mr(1) as u32;
         Ok(glenda::protocol::fs::Stat { size, mode, ..Default::default() })
     }

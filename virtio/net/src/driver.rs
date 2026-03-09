@@ -45,7 +45,7 @@ impl DriverService for NetService<'_> {
 
         let mut net = unsafe { VirtIONet::new(MMIO_VA).map_err(|_| Error::Generic)? };
 
-        net.init(DMA_VA as *mut u8, paddr as u64, self.endpoint).map_err(|_| Error::Generic)?;
+        net.init(DMA_VA as *mut u8, paddr as usize, self.endpoint).map_err(|_| Error::Generic)?;
         glenda::arch::sync::fence();
 
         self.net = Some(net);

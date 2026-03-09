@@ -172,14 +172,14 @@ impl VirtIOTransport {
     pub unsafe fn setup_queue(&self, vq: &VirtQueue) {
         self.write_queue_sel(vq.index);
         self.write_queue_num(vq.num as u32);
-        self.write_queue_desc(vq.paddr);
+        self.write_queue_desc(vq.paddr as u64);
 
-        let avail_offset = 16 * vq.num as u64;
-        self.write_queue_driver(vq.paddr + avail_offset);
+        let avail_offset = 16 * vq.num as usize;
+        self.write_queue_driver((vq.paddr + avail_offset) as u64);
 
         // Used ring is aligned to 4 bytes
-        let used_offset = (16 * vq.num as u64 + 6 + 2 * vq.num as u64 + 3) & !3;
-        self.write_queue_device(vq.paddr + used_offset);
+        let used_offset = (16 * vq.num as usize + 6 + 2 * vq.num as usize + 3) & !3;
+        self.write_queue_device((vq.paddr + used_offset) as u64);
 
         self.write_queue_ready(1);
     }

@@ -67,7 +67,7 @@ impl DriverService for BlockService<'_> {
         glenda::arch::sync::fence();
 
         // 7. Initialize VirtIOBlk
-        blk.init(DMA_VA as *mut u8, paddr as u64, self.endpoint)?;
+        blk.init(DMA_VA as *mut u8, paddr as usize, self.endpoint)?;
         glenda::arch::sync::fence();
 
         let cap = blk.capacity();

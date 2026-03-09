@@ -17,10 +17,10 @@ struct RintcEntry {
     version: u8,
     reserved: u8,
     flags: u32,
-    hart_id: u64,
+    hart_id: usize,
     id: u32,
     ext_intc_id: u32,
-    imsic_base_addr: u64,
+    imsic_base_addr: usize,
     imsic_size: u32,
 }
 
@@ -30,11 +30,11 @@ struct AplicEntry {
     version: u8,
     id: u8,
     flags: u32,
-    hardware_id: u64,
+    hardware_id: usize,
     idc_count: u16,
     ext_vector_count: u16,
     gsi_base: u32,
-    base_addr: u64,
+    base_addr: usize,
     size: u32,
 }
 
@@ -43,9 +43,9 @@ struct PlicEntry {
     header: acpi::sdt::madt::EntryHeader, // 0..2
     version: u8,                          // 2..3
     id: u8,                               // 3..4
-    hardware_id: u64,                     // 4..12
+    hardware_id: usize,                     // 4..12
     total_irq: u16,                       // 12..14
-    base_addr: u64,                       // 14..22
+    base_addr: usize,                       // 14..22
     size: u32,                            // 22..26
     gsi_base: u32,                        // 26..30
     reserved: [u8; 6],                    // 30..36

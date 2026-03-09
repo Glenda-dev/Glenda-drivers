@@ -11,7 +11,7 @@ use virtio_common::VirtIOTransport;
 pub struct VirtIOBlkReq {
     pub type_: u32,
     pub reserved: u32,
-    pub sector: u64,
+    pub sector: usize,
 }
 
 pub const VIRTIO_BLK_T_IN: u32 = 0;
@@ -22,17 +22,17 @@ pub const VIRTIO_BLK_S_OK: u8 = 0;
 pub const VIRTIO_BLK_S_IOERR: u8 = 1;
 pub const VIRTIO_BLK_S_UNSUPP: u8 = 2;
 
-pub const VIRTIO_F_RING_PACKED: u64 = 1 << 34;
-pub const VIRTIO_F_EVENT_IDX: u64 = 1 << 29;
+pub const VIRTIO_F_RING_PACKED: u64 = 1_u64 << 34;
+pub const VIRTIO_F_EVENT_IDX: u64 = 1_u64 << 29;
 
-pub const VIRTIO_BLK_F_BLK_SIZE: u64 = 1 << 6;
+pub const VIRTIO_BLK_F_BLK_SIZE: u64 = 1_u64 << 6;
 
 pub struct VirtIOBlk {
     pub transport: VirtIOTransport,
     pub queue: Option<VirtQueue>,
     pub dma_vaddr: *mut u8,
-    pub dma_paddr: u64,
-    pub pending_info: [Option<(u64, u16)>; 64],
+    pub dma_paddr: usize,
+    pub pending_info: [Option<(usize, u16)>; 64],
     pub ring_server: Option<IoUringServer>,
     pub endpoint: Option<Endpoint>,
     pub buffer: Option<SharedMemory>,
@@ -58,7 +58,7 @@ impl VirtIOBlk {
         &mut self,
         frame: Frame,
         vaddr: usize,
-        paddr: u64,
+        paddr: usize,
         size: usize,
     ) -> Result<(), Error> {
         // Since we don't map it here (it's already handled by the service layer if needed),
@@ -76,7 +76,7 @@ impl VirtIOBlk {
     pub fn init(
         &mut self,
         dma_vaddr: *mut u8,
-        dma_paddr: u64,
+        dma_paddr: usize,
         endpoint: Endpoint,
     ) -> Result<(), Error> {
         self.dma_vaddr = dma_vaddr;
@@ -196,9 +196,9 @@ impl VirtIOBlk {
 
         glenda::arch::sync::fence();
 
-        let req_paddr = self.dma_paddr + (req_idx * core::mem::size_of::<VirtIOBlkReq>()) as u64;
+        let req_paddr = self.dma_paddr + (req_idx * core::mem::size_of::<VirtIOBlkReq>()) as usize;
         let status_paddr =
-            self.dma_paddr + (64 * core::mem::size_of::<VirtIOBlkReq>() + req_idx) as u64;
+            self.dma_paddr + (64 * core::mem::size_of::<VirtIOBlkReq>() + req_idx) as usize;
 
         let data_paddr = if let Some(ref shm) = self.buffer {
             let client_vaddr = shm.client_vaddr();
@@ -210,7 +210,7 @@ impl VirtIOBlk {
                 log!("VirtIO-Blk error: Address {:#x} out of SHM boundary", sqe.addr);
                 return Err(Error::InvalidArgs);
             }
-            paddr + (sqe.addr as u64 - client_vaddr as u64)
+            paddr + (sqe.addr as usize - client_vaddr as usize)
         } else {
             // Fallback to absolute paddr if no SHM (risky, but was previous behavior)
             sqe.addr
@@ -310,9 +310,9 @@ impl VirtIOBlk {
         self.ring_server = Some(server);
     }
 
-    pub fn capacity(&self) -> u64 {
+    pub fn capacity(&self) -> usize {
         unsafe {
-            let ptr = self.transport.config_ptr() as *const u64;
+            let ptr = self.transport.config_ptr() as *const usize;
             ptr.read_volatile()
         }
     }

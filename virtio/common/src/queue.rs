@@ -1,7 +1,7 @@
 #[repr(C, align(16))]
 #[derive(Debug, Clone, Copy)]
 pub struct Descriptor {
-    pub addr: u64,
+    pub addr: usize,
     pub len: u32,
     pub flags: u16,
     pub next: u16,
@@ -46,7 +46,7 @@ pub fn queue_size_in_bytes(num: u16) -> usize {
 pub struct VirtQueue {
     pub index: u32,
     pub num: u16,
-    pub paddr: u64,
+    pub paddr: usize,
     pub vaddr: *mut u8,
 
     pub last_used_idx: u16,
@@ -55,7 +55,7 @@ pub struct VirtQueue {
 }
 
 impl VirtQueue {
-    pub unsafe fn new(index: u32, num: u16, paddr: u64, vaddr: *mut u8) -> Self {
+    pub unsafe fn new(index: u32, num: u16, paddr: usize, vaddr: *mut u8) -> Self {
         let v = Self { index, num, paddr, vaddr, last_used_idx: 0, free_head: 0, num_free: num };
 
         // Initialize descriptor chain

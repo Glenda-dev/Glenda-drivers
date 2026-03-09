@@ -52,15 +52,15 @@ impl<'a> RtcService<'a> {
     }
 
     fn on_set_time(&mut self, utcb: &mut UTCB) -> Result<(), Error> {
-        let timestamp = utcb.get_mr(0) as u64;
-        self.set_time(timestamp)?;
+        let timestamp = utcb.get_mr(0) as usize;
+        self.set_time(timestamp as u64)?;
         utcb.set_msg_tag(MsgTag::ok());
         Ok(())
     }
 
     fn on_set_alarm(&mut self, utcb: &mut UTCB) -> Result<(), Error> {
-        let timestamp = utcb.get_mr(0) as u64;
-        self.set_alarm(timestamp)?;
+        let timestamp = utcb.get_mr(0) as usize;
+        self.set_alarm(timestamp as u64)?;
         utcb.set_msg_tag(MsgTag::ok());
         Ok(())
     }

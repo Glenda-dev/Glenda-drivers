@@ -88,7 +88,7 @@ impl<'a> BlockService<'a> {
         &mut self,
         frame: Frame,
         vaddr: usize,
-        paddr: u64,
+        paddr: usize,
         size: usize,
     ) -> Result<(), Error> {
         if let Some(blk) = self.blk.as_mut() {
@@ -100,7 +100,7 @@ impl<'a> BlockService<'a> {
 }
 
 impl<'a> BlockService<'a> {
-    pub fn capacity(&self) -> u64 {
+    pub fn capacity(&self) -> usize {
         self.blk.as_ref().map(|b| b.capacity()).unwrap_or(0)
     }
 
@@ -237,7 +237,7 @@ impl<'a> SystemService for BlockService<'a> {
                     // Read args into local variables before move_cap
                     let vaddr = u.get_mr(0);
                     let size = u.get_mr(1);
-                    let paddr = u.get_mr(2) as u64;
+                    let paddr = u.get_mr(2) as usize;
 
                     CSPACE_CAP.move_cap(recv_slot, slot)?;
 

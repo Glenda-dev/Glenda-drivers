@@ -45,7 +45,7 @@ impl Ns16550a {
         &mut self,
         frame: Frame,
         client_vaddr: usize,
-        paddr: u64,
+        paddr: usize,
         size: usize,
     ) -> Result<(), Error> {
         let mut shm = SharedMemory::new(frame, SHM_VA, size);

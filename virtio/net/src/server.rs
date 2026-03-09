@@ -91,7 +91,7 @@ impl<'a> NetService<'a> {
         &mut self,
         frame: Frame,
         vaddr: usize,
-        paddr: u64,
+        paddr: usize,
         size: usize,
     ) -> Result<(), Error> {
         self.vspace_mgr.map_frame(
@@ -240,7 +240,7 @@ impl<'a> SystemService for NetService<'a> {
                 handle_call(u, |u| {
                     let vaddr = u.get_mr(0);
                     let size = u.get_mr(1);
-                    let paddr = u.get_mr(2) as u64;
+                    let paddr = u.get_mr(2) as usize;
                     // Move the cap from recv window to a temporary slot
                     let slot = s.cspace_mgr.alloc(s.res)?;
                     CSPACE_CAP.move_cap(s.recv, slot)?;

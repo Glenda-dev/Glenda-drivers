@@ -1,3 +1,7 @@
+#[cfg(target_pointer_width = "64")]
+pub const IRQ_BADGE: usize = 1 << 33;
+#[cfg(target_pointer_width = "32")]
+pub const IRQ_BADGE: usize = 1 << 31;
 use glenda::cap::{CapPtr, Endpoint, Frame, IrqHandler};
 
 pub const DEVICE_SLOT: CapPtr = CapPtr::from(9);
@@ -18,4 +22,3 @@ pub const MMIO_VA: usize = 0x4000_0000;
 pub const DMA_VA: usize = 0x5000_0000;
 pub const RING_VA: usize = 0x6000_0000;
 
-pub const IRQ_BADGE: usize = 1 << 33;

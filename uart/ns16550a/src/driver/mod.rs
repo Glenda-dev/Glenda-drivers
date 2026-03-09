@@ -77,7 +77,7 @@ impl<'a> UartService<'a> {
         &mut self,
         frame: Frame,
         vaddr: usize,
-        paddr: u64,
+        paddr: usize,
         size: usize,
     ) -> Result<(), Error> {
         self.vspace.map_frame(

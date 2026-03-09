@@ -23,8 +23,8 @@ impl Ramdisk {
         Self { data, block_size: 512, ring: None, buffer: None }
     }
 
-    pub fn capacity(&self) -> u64 {
-        (self.data.len() as u64) / (self.block_size as u64)
+    pub fn capacity(&self) -> usize {
+        (self.data.len() as usize) / (self.block_size as usize)
     }
 
     pub fn block_size(&self) -> u32 {
@@ -42,7 +42,7 @@ impl Ramdisk {
         cspace_mgr: &mut CSpaceManager,
         client_vaddr: usize,
         size: usize,
-        paddr: u64,
+        paddr: usize,
     ) -> Result<(), Error> {
         let frame = Frame::from(BUFFER_SLOT);
         let pages = (size + glenda::arch::mem::PGSIZE - 1) / glenda::arch::mem::PGSIZE;
@@ -164,8 +164,8 @@ impl Ramdisk {
             addr
         );
 
-        let byte_offset = sector * block_size as u64;
-        if byte_offset + len as u64 > self.data.len() as u64 {
+        let byte_offset = sector * block_size as usize;
+        if byte_offset + len as usize > self.data.len() as usize {
             return -(Error::InvalidArgs as i32);
         }
 

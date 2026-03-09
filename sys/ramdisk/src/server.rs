@@ -157,7 +157,7 @@ impl<'a> SystemService for RamdiskService<'a> {
                 let recv_slot = s.recv;
                 let client_vaddr = u.get_mr(0);
                 let size = u.get_mr(1);
-                let paddr = u.get_mr(2) as u64;
+                let paddr = u.get_mr(2) as usize;
 
                 // Move capabilities after reading registers
                 CSPACE_CAP.move_cap(recv_slot, BUFFER_SLOT)?;

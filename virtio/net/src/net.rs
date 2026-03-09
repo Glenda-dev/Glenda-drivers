@@ -6,8 +6,8 @@ use virtio_common::consts::*;
 use virtio_common::queue::{Descriptor, VirtQueue, DESC_F_NEXT, DESC_F_WRITE};
 use virtio_common::{Result, VirtIOError, VirtIOTransport};
 
-pub const VIRTIO_NET_F_MAC: u64 = 5;
-pub const VIRTIO_NET_F_MRG_RXBUF: u64 = 15;
+pub const VIRTIO_NET_F_MAC: usize = 5;
+pub const VIRTIO_NET_F_MRG_RXBUF: usize = 15;
 
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy)]
@@ -26,9 +26,9 @@ pub struct VirtIONet {
     pub rx_queue: Option<VirtQueue>,
     pub tx_queue: Option<VirtQueue>,
     pub dma_vaddr: *mut u8,
-    pub dma_paddr: u64,
-    pub pending_rx: [Option<(u64, u16)>; 128],
-    pub pending_tx: [Option<(u64, u16)>; 128],
+    pub dma_paddr: usize,
+    pub pending_rx: [Option<(usize, u16)>; 128],
+    pub pending_tx: [Option<(usize, u16)>; 128],
     pub ring_server: Option<IoUringServer>,
     pub endpoint: Option<Endpoint>,
     pub buffer: Option<SharedMemory>,
@@ -63,7 +63,7 @@ impl VirtIONet {
         &mut self,
         frame: Frame,
         vaddr: usize,
-        paddr: u64,
+        paddr: usize,
         size: usize,
     ) -> core::result::Result<(), glenda::error::Error> {
         let mut shm = SharedMemory::from_frame(frame, vaddr, size);
@@ -74,7 +74,7 @@ impl VirtIONet {
         Ok(())
     }
 
-    pub fn init(&mut self, dma_vaddr: *mut u8, dma_paddr: u64, endpoint: Endpoint) -> Result<()> {
+    pub fn init(&mut self, dma_vaddr: *mut u8, dma_paddr: usize, endpoint: Endpoint) -> Result<()> {
         self.dma_vaddr = dma_vaddr;
         self.dma_paddr = dma_paddr;
         self.endpoint = Some(endpoint);
@@ -170,14 +170,14 @@ impl VirtIONet {
                 error!("Address {:#x} out of SHM boundary", sqe.addr);
                 return Err(VirtIOError::InvalidHeader);
             }
-            paddr + (sqe.addr as u64 - client_vaddr as u64)
+            paddr + (sqe.addr as usize - client_vaddr as usize)
         } else {
             sqe.addr
         };
 
         // Page 0 (DMA_VA) for RX headers, Page 1 for TX headers.
         // Each page can hold up to 128 headers (approx 12 bytes each).
-        let hdr_paddr = self.dma_paddr + (qidx as u64 * 4096) + (d1 as u64 * 16);
+        let hdr_paddr = self.dma_paddr + (qidx as usize * 4096) + (d1 as usize * 16);
         let hdr_vaddr = unsafe { self.dma_vaddr.add(qidx as usize * 4096).add(d1 as usize * 16) };
 
         // Initialize header

@@ -141,7 +141,6 @@ impl<'a> SystemService for UartService<'a> {
                         let is_irq = bits & IRQ_BADGE != 0;
                         let is_cq = bits & glenda::io::uring::NOTIFY_IO_URING_CQ != 0;
                         let is_sq = bits & glenda::io::uring::NOTIFY_IO_URING_SQ != 0;
-
                         if is_irq {
                             if let Err(e) = s.handle_notify_irq() {
                                 error!("IRQ failed: {:?}", e);

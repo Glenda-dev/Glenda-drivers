@@ -70,3 +70,6 @@ pub const LSR_FIFO_ERROR: u8 = 1 << 7;
 // IIR bits
 pub const IIR_NO_INTERRUPT: u8 = 1 << 0;
 pub const IIR_ID_MASK: u8 = 0x0E;
+pub const IIR_RX_DATA_READY: u8 = 0x04;
+pub const IIR_TIMEOUT: u8 = 0x0C;
+pub const IIR_RLS: u8 = 0x06;

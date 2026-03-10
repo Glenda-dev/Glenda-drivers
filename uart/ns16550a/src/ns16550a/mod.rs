@@ -1,9 +1,8 @@
 mod config;
 mod consts;
-#[cfg(feature = "unicode")]
-mod utf8;
 
 use crate::layout::SHM_VA;
+use alloc::collections::VecDeque;
 use config::*;
 use consts::*;
 use glenda::cap::{Frame, IrqHandler};
@@ -11,17 +10,14 @@ use glenda::drivers::interface::UartDriver;
 use glenda::error::Error;
 use glenda::io::uring::IoUringServer;
 use glenda::mem::shm::SharedMemory;
-#[cfg(feature = "unicode")]
-use utf8::Utf8Decoder;
 
 pub struct Ns16550a {
     pub base: usize,
     pub irq: IrqHandler,
-    #[cfg(feature = "unicode")]
-    decoder: Utf8Decoder,
     pub ring: Option<IoUringServer>,
     pub shm: Option<SharedMemory>,
     pub pending_read: Option<glenda::io::uring::IoUringSqe>,
+    pub rx_buffer: VecDeque<u8>,
 }
 
 impl Ns16550a {
@@ -29,11 +25,10 @@ impl Ns16550a {
         Self {
             base,
             irq,
-            #[cfg(feature = "unicode")]
-            decoder: Utf8Decoder::new(),
             ring: None,
             shm: None,
             pending_read: None,
+            rx_buffer: VecDeque::with_capacity(1024),
         }
     }
 
@@ -98,9 +93,7 @@ impl Ns16550a {
     }
 
     pub fn handle_irq(&mut self) -> Result<(), Error> {
-        let mut count = 0;
-        let mut bytes = [0u8; 16];
-
+        let mut has_data = false;
         loop {
             unsafe {
                 let iir = self.read_reg(IIR);
@@ -108,60 +101,73 @@ impl Ns16550a {
                     break;
                 }
 
-                if let Some(c) = self.getchar() {
-                    if count < bytes.len() {
-                        bytes[count] = c;
-                        count += 1;
+                let id = iir & IIR_ID_MASK;
+                if id == IIR_RX_DATA_READY || id == IIR_TIMEOUT || id == IIR_RLS {
+                    while let Some(c) = self.getchar() {
+                        if self.rx_buffer.len() < 1024 {
+                            self.rx_buffer.push_back(c);
+                            has_data = true;
+                        }
                     }
-                } else {
-                    break;
                 }
             }
         }
 
-        if count > 0 {
-            if let Some(sqe) = self.pending_read.take() {
-                let addr = sqe.addr;
-                let len = core::cmp::min(sqe.len as usize, count);
-                let user_data = sqe.user_data;
-
-                if let Some(shm) = &self.shm {
-                    let client_vaddr = shm.client_vaddr();
-                    if (addr as usize) >= client_vaddr
-                        && (addr as usize) + len <= client_vaddr + shm.size()
-                    {
-                        let server_vaddr = shm.vaddr() + (addr as usize - client_vaddr);
-                        unsafe {
-                            core::ptr::copy_nonoverlapping(
-                                bytes.as_ptr(),
-                                server_vaddr as *mut u8,
-                                len,
-                            );
-                        }
-                    } else {
-                        error!(
-                            "NS16550A IRQ error: Read address {:#x} (len {}) out of SHM boundary",
-                            addr, len
-                        );
-                        if let Some(mut ring) = self.ring.take() {
-                            let _ = ring.complete(user_data, -(Error::InvalidArgs as i32));
-                            self.ring = Some(ring);
-                        }
-                        return Ok(());
-                    }
-                } else {
-                    unsafe {
-                        core::ptr::copy_nonoverlapping(bytes.as_ptr(), addr as *mut u8, len);
-                    }
-                }
-
-                if let Some(mut ring) = self.ring.take() {
-                    let _ = ring.complete(user_data, len as i32);
-                    self.ring = Some(ring);
-                }
-            }
+        if has_data {
+            self.try_complete_read();
         }
         Ok(())
+    }
+
+    fn try_complete_read(&mut self) {
+        if self.rx_buffer.is_empty() {
+            return;
+        }
+
+        if let Some(sqe) = self.pending_read.take() {
+            let addr = sqe.addr;
+            let len = core::cmp::min(sqe.len as usize, self.rx_buffer.len());
+            let user_data = sqe.user_data;
+
+            if let Some(shm) = &self.shm {
+                let client_vaddr = shm.client_vaddr();
+                if (addr as usize) >= client_vaddr
+                    && (addr as usize) + len <= client_vaddr + shm.size()
+                {
+                    let server_vaddr = shm.vaddr() + (addr as usize - client_vaddr);
+                    unsafe {
+                        let buf = core::slice::from_raw_parts_mut(server_vaddr as *mut u8, len);
+                        for i in 0..len {
+                            buf[i] = self.rx_buffer.pop_front().unwrap();
+                        }
+                        // Ensure data is written to memory before CQE is pushed
+                        core::sync::atomic::fence(core::sync::atomic::Ordering::Release);
+                    }
+                } else {
+                    error!(
+                        "NS16550A IRQ error: Read address {:#x} (len {}) out of SHM boundary",
+                        addr, len
+                    );
+                    if let Some(mut ring) = self.ring.take() {
+                        let _ = ring.complete(user_data, -(Error::InvalidArgs as i32));
+                        self.ring = Some(ring);
+                    }
+                    return;
+                }
+            } else {
+                unsafe {
+                    let buf = core::slice::from_raw_parts_mut(addr as *mut u8, len);
+                    for i in 0..len {
+                        buf[i] = self.rx_buffer.pop_front().unwrap();
+                    }
+                }
+            }
+
+            if let Some(mut ring) = self.ring.take() {
+                let _ = ring.complete(user_data, len as i32);
+                self.ring = Some(ring);
+            }
+        }
     }
 
     pub fn handle_sq(&mut self) {
@@ -189,6 +195,8 @@ impl Ns16550a {
 
                             let server_vaddr = server_vaddr_base + (addr as usize - client_vaddr);
                             let buf = unsafe {
+                                // Ensure all data writes from client are visible before we read
+                                core::sync::atomic::fence(core::sync::atomic::Ordering::Acquire);
                                 core::slice::from_raw_parts(server_vaddr as *const u8, len)
                             };
                             for &b in buf {
@@ -199,38 +207,13 @@ impl Ns16550a {
                     }
                     glenda::io::uring::IOURING_OP_READ => {
                         // For UART, READ SQEs could be queued and completed when data arrives.
-                        let addr = sqe.addr;
-                        let user_data = sqe.user_data;
-
-                        let mut count = 0;
-                        if let Some(c) = self.getchar() {
-                            if let Some(shm) = &self.shm {
-                                let client_vaddr = shm.client_vaddr();
-                                if (addr as usize) >= client_vaddr
-                                    && (addr as usize) < client_vaddr + shm.size()
-                                {
-                                    let server_vaddr = shm.vaddr() + (addr as usize - client_vaddr);
-                                    unsafe { *(server_vaddr as *mut u8) = c };
-                                    count = 1;
-                                } else {
-                                    error!(
-                                        "NS16550A error: Read address {:#x} out of SHM boundary",
-                                        addr
-                                    );
-                                    let _ = ring.complete(user_data, -(Error::InvalidArgs as i32));
-                                    continue;
-                                }
-                            }
-                        }
-
-                        if count > 0 {
-                            let _ = ring.complete(user_data, count as i32);
+                        if self.pending_read.is_none() {
+                            self.pending_read = Some(sqe);
+                            // Critical: try to complete immediately if rx_buffer has data
+                            self.try_complete_read();
                         } else {
-                            // If no data, we store the SQE and complete it in handle_irq.
-                            // Ensure any previous pending read is not overwritten if it hasn't been completed.
-                            if self.pending_read.is_none() {
-                                self.pending_read = Some(sqe);
-                            }
+                            error!("NS16550A: Multiple concurrent reads not supported yet.");
+                            let _ = ring.complete(sqe.user_data, -(Error::NotSupported as i32));
                         }
                     }
                     _ => {
@@ -246,18 +229,6 @@ impl Ns16550a {
         // CQ notification from client means client has consumed some entries.
         // For a simple UART driver, we might not need to do anything here
         // unless we were flow-controlled.
-    }
-
-    fn process_char(&mut self, _c: char) {
-        // Obsolete: Driver is now data-agnostic.
-    }
-
-    fn put_unicode_char(&self, c: char) {
-        let mut buf = [0u8; 4];
-        let s = c.encode_utf8(&mut buf);
-        for b in s.as_bytes() {
-            self.putchar(*b);
-        }
     }
 
     fn getchar(&self) -> Option<u8> {
@@ -280,10 +251,8 @@ impl Ns16550a {
 
 impl UartDriver for Ns16550a {
     fn write(&mut self, buf: &[u8]) -> Result<usize, Error> {
-        if let Ok(s) = core::str::from_utf8(buf) {
-            log!("UART Write Sync ({} bytes): {}", buf.len(), s);
-        } else {
-            log!("UART Write Sync ({} bytes): {:?}", buf.len(), buf);
+        for &b in buf {
+            self.putchar(b);
         }
         Ok(buf.len())
     }
@@ -303,12 +272,5 @@ impl UartDriver for Ns16550a {
 
     fn set_baud_rate(&mut self, baud: u32) {
         Self::set_baud_rate(self, baud);
-    }
-}
-
-impl core::fmt::Write for Ns16550a {
-    fn write_str(&mut self, s: &str) -> core::fmt::Result {
-        let _ = self.write(s.as_bytes());
-        Ok(())
     }
 }

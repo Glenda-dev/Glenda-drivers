@@ -96,7 +96,7 @@ impl VirtIOBlk {
                 let ptr = self.transport.config_ptr() as *const u32;
                 // blk_size is at offset 20 in the config space for virtio-blk
                 self.blk_size = ptr.add(5).read_volatile();
-                log!("VirtIO-Blk: detected block size {}", self.blk_size);
+                log!("Detected block size {}", self.blk_size);
             }
         }
 
@@ -207,7 +207,7 @@ impl VirtIOBlk {
             if (sqe.addr as usize) < client_vaddr
                 || (sqe.addr as usize) + sqe.len as usize > client_vaddr + size
             {
-                log!("VirtIO-Blk error: Address {:#x} out of SHM boundary", sqe.addr);
+                error!("Address {:#x} out of SHM boundary", sqe.addr);
                 return Err(Error::InvalidArgs);
             }
             paddr + (sqe.addr as usize - client_vaddr as usize)

@@ -8,6 +8,7 @@ use consts::*;
 use glenda::cap::{Frame, IrqHandler};
 use glenda::drivers::interface::UartDriver;
 use glenda::error::Error;
+use glenda::io::ring_buffer::ShmRingBuffer;
 use glenda::io::uring::IoUringServer;
 use glenda::mem::shm::SharedMemory;
 
@@ -16,8 +17,10 @@ pub struct Ns16550a {
     pub irq: IrqHandler,
     pub ring: Option<IoUringServer>,
     pub shm: Option<SharedMemory>,
-    pub pending_read: Option<glenda::io::uring::IoUringSqe>,
+    pub rx_ring: Option<&'static mut ShmRingBuffer>,
+    pub tx_ring: Option<&'static mut ShmRingBuffer>,
     pub rx_buffer: VecDeque<u8>,
+    pub pending_read: Option<usize>,
 }
 
 impl Ns16550a {
@@ -27,8 +30,10 @@ impl Ns16550a {
             irq,
             ring: None,
             shm: None,
-            pending_read: None,
+            rx_ring: None,
+            tx_ring: None,
             rx_buffer: VecDeque::with_capacity(1024),
+            pending_read: None,
         }
     }
 
@@ -46,6 +51,19 @@ impl Ns16550a {
         let mut shm = SharedMemory::new(frame, SHM_VA, size);
         shm.set_client_vaddr(client_vaddr);
         shm.set_paddr(paddr);
+
+        // Split SHM into two halves
+        // 0 - 2KB: TX Ring Buffer (Input to UART)
+        // 2KB - 4KB: RX Ring Buffer (Output from UART)
+
+        let tx_ring_ptr = SHM_VA as *mut u8;
+        let rx_ring_ptr = (SHM_VA + 2048) as *mut u8;
+
+        unsafe {
+            self.tx_ring = Some(ShmRingBuffer::init(tx_ring_ptr, 2048));
+            self.rx_ring = Some(ShmRingBuffer::init(rx_ring_ptr, 2048));
+        }
+
         self.shm = Some(shm);
         Ok(())
     }
@@ -107,128 +125,106 @@ impl Ns16550a {
                         if self.rx_buffer.len() < 1024 {
                             self.rx_buffer.push_back(c);
                             has_data = true;
+                        } else {
+                            warn!("NS16550A: RX buffer overflow, dropping byte {:#x}", c);
                         }
                     }
+                } else if id == IIR_THR_EMPTY {
+                    self.process_tx_ring();
                 }
             }
         }
 
         if has_data {
-            self.try_complete_read();
+            self.process_rx_ring();
         }
         Ok(())
     }
 
-    fn try_complete_read(&mut self) {
-        if self.rx_buffer.is_empty() {
-            return;
-        }
-
-        if let Some(sqe) = self.pending_read.take() {
-            let addr = sqe.addr;
-            let len = core::cmp::min(sqe.len as usize, self.rx_buffer.len());
-            let user_data = sqe.user_data;
-
-            if let Some(shm) = &self.shm {
-                let client_vaddr = shm.client_vaddr();
-                if (addr as usize) >= client_vaddr
-                    && (addr as usize) + len <= client_vaddr + shm.size()
-                {
-                    let server_vaddr = shm.vaddr() + (addr as usize - client_vaddr);
-                    unsafe {
-                        let buf = core::slice::from_raw_parts_mut(server_vaddr as *mut u8, len);
-                        for i in 0..len {
-                            buf[i] = self.rx_buffer.pop_front().unwrap();
-                        }
-                        // Ensure data is written to memory before CQE is pushed
-                        core::sync::atomic::fence(core::sync::atomic::Ordering::Release);
-                    }
+    fn process_rx_ring(&mut self) {
+        // Try to push to SHM Ring Buffer first
+        if let Some(ring) = &mut self.rx_ring {
+            let mut pushed_total = 0;
+            while !self.rx_buffer.is_empty() {
+                let first = *self.rx_buffer.front().unwrap();
+                if ring.push_byte(first) {
+                    self.rx_buffer.pop_front();
+                    pushed_total += 1;
                 } else {
-                    error!(
-                        "NS16550A IRQ error: Read address {:#x} (len {}) out of SHM boundary",
-                        addr, len
-                    );
-                    if let Some(mut ring) = self.ring.take() {
-                        let _ = ring.complete(user_data, -(Error::InvalidArgs as i32));
-                        self.ring = Some(ring);
-                    }
-                    return;
-                }
-            } else {
-                unsafe {
-                    let buf = core::slice::from_raw_parts_mut(addr as *mut u8, len);
-                    for i in 0..len {
-                        buf[i] = self.rx_buffer.pop_front().unwrap();
-                    }
+                    break; // Ring full
                 }
             }
 
-            if let Some(mut ring) = self.ring.take() {
-                let _ = ring.complete(user_data, len as i32);
-                self.ring = Some(ring);
+            if pushed_total > 0 {
+                if let Some(ud) = self.pending_read {
+                    if let Some(uring) = &mut self.ring {
+                        let _ = uring.complete(ud, pushed_total as i32);
+                    }
+                }
             }
         }
     }
 
     pub fn handle_sq(&mut self) {
-        if let Some(mut ring) = self.ring.take() {
-            while let Some(sqe) = ring.next_request() {
+        loop {
+            let sqe = if let Some(ring) = &mut self.ring { ring.next_request() } else { None };
+            if let Some(sqe) = sqe {
                 match sqe.opcode {
                     glenda::io::uring::IOURING_OP_WRITE => {
-                        let addr = sqe.addr;
-                        let len = sqe.len as usize;
-                        let user_data = sqe.user_data;
-
-                        // Use SHM if available, otherwise assume linear mapping (not safe but compatible)
-                        if let Some(shm) = &self.shm {
-                            // Convert client-side addr to server-side vaddr
-                            let client_vaddr = shm.client_vaddr();
-                            let server_vaddr_base = shm.vaddr();
-
-                            if (addr as usize) < client_vaddr
-                                || (addr as usize) + len > client_vaddr + shm.size()
-                            {
-                                error!("NS16550A error: Write address {:#x} (len {}) out of SHM boundary", addr, len);
-                                let _ = ring.complete(user_data, -(Error::InvalidArgs as i32));
-                                continue;
-                            }
-
-                            let server_vaddr = server_vaddr_base + (addr as usize - client_vaddr);
-                            let buf = unsafe {
-                                // Ensure all data writes from client are visible before we read
-                                core::sync::atomic::fence(core::sync::atomic::Ordering::Acquire);
-                                core::slice::from_raw_parts(server_vaddr as *const u8, len)
-                            };
-                            for &b in buf {
-                                self.putchar(b);
-                            }
+                        self.process_tx_ring();
+                        let res = if sqe.addr == 0 { 0 } else { sqe.len as i32 };
+                        if let Some(ring) = &mut self.ring {
+                            let _ = ring.complete(sqe.user_data, res);
                         }
-                        let _ = ring.complete(user_data, len as i32);
                     }
                     glenda::io::uring::IOURING_OP_READ => {
-                        // For UART, READ SQEs could be queued and completed when data arrives.
-                        if self.pending_read.is_none() {
-                            self.pending_read = Some(sqe);
-                            // Critical: try to complete immediately if rx_buffer has data
-                            self.try_complete_read();
-                        } else {
-                            error!("NS16550A: Multiple concurrent reads not supported yet.");
-                            let _ = ring.complete(sqe.user_data, -(Error::NotSupported as i32));
+                        self.pending_read = Some(sqe.user_data);
+                        self.process_rx_ring();
+                        // Trigger an initial fake CQE to ensure the client checks existing data
+                        if let Some(ring) = &mut self.ring {
+                            let _ = ring.complete(sqe.user_data, 0);
                         }
                     }
                     _ => {
-                        let _ = ring.complete(sqe.user_data, -(Error::NotSupported as i32));
+                        if let Some(ring) = &mut self.ring {
+                            let _ = ring.complete(sqe.user_data, -(Error::NotSupported as i32));
+                        }
                     }
                 }
+            } else {
+                break;
             }
-            self.ring = Some(ring);
         }
     }
 
     pub fn handle_cq(&mut self) {
         // CQ notification from client means client has consumed some entries.
-        // For a simple UART driver, we might not need to do anything here
-        // unless we were flow-controlled.
+        // We might want to check if TX Ring has space now if we were flow-controlled
+    }
+
+    fn process_tx_ring(&mut self) {
+        let mut data_to_write = [0u8; 128];
+        let mut total_read = 0;
+
+        loop {
+            if let Some(tx_ring) = &mut self.tx_ring {
+                total_read = tx_ring.pop_slice(&mut data_to_write);
+            }
+
+            if total_read > 0 {
+                for i in 0..total_read {
+                    self.putchar(data_to_write[i]);
+                }
+
+                // Notify client that we've consumed TX data
+                if let Some(mut uring) = self.ring.take() {
+                    let _ = uring.complete(1, 0); // user_data 1 = WRITE
+                    self.ring = Some(uring);
+                }
+            } else {
+                break;
+            }
+        }
     }
 
     fn getchar(&self) -> Option<u8> {

@@ -248,21 +248,6 @@ impl VirtIOBlk {
         glenda::arch::sync::fence();
         queue.submit(d1);
 
-        // FIXME: this is a hack
-        // ZICBOM FLUSH: Flush Available Ring and Desc Table
-        unsafe {
-            // Queue starts at 8192.
-            let queue_base = (self.dma_vaddr as usize) + 8192;
-            core::arch::asm!(".word 0x0025200F", in("a0") queue_base);
-
-            let avail_idx_addr = queue_base + 2048;
-            core::arch::asm!(".word 0x0025200F", in("a0") avail_idx_addr);
-
-            // Flush Request Header (Page 0)
-            let req_addr = req_ptr as usize;
-            core::arch::asm!(".word 0x0025200F", in("a0") req_addr);
-        }
-
         glenda::arch::sync::fence();
         self.pending_info[req_idx] = Some((sqe.user_data, d1));
         self.transport.notify_queue(0);

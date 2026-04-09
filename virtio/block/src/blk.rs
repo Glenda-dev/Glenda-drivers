@@ -217,10 +217,11 @@ impl VirtIOBlk {
         };
 
         log!(
-            "Submitting VirtIO request: opcode={}, paddr={:#x}, len={}",
+            "Submitting VirtIO request: opcode={}, addr={:#x}, offset={:#x}, len={}",
             sqe.opcode,
-            data_paddr,
-            sqe.len
+            sqe.addr,
+            sqe.off,
+            sqe.len,
         );
 
         let d1 = queue.alloc_desc().ok_or(Error::OutOfMemory)?;

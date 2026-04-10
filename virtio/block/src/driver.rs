@@ -34,7 +34,7 @@ impl DriverService for BlockService<'_> {
         log!("Got IRQ cap: {:?}", irq_handler);
 
         // Mint a badged endpoint for IRQ notification
-        CSPACE_CAP.mint(
+        CSPACE_CAP.mint_self(
             self.endpoint.cap(),
             IRQ_NOTIFY_SLOT,
             Badge::new(IRQ_BADGE),

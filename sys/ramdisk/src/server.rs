@@ -160,7 +160,7 @@ impl<'a> SystemService for RamdiskService<'a> {
                 let paddr = u.get_mr(2) as usize;
 
                 // Move capabilities after reading registers
-                CSPACE_CAP.move_cap(recv_slot, BUFFER_SLOT)?;
+                CSPACE_CAP.transfer_self(recv_slot, BUFFER_SLOT)?;
 
                 handle_call(u, |_| {
                     let res = unsafe { &mut *(s.res as *mut ResourceClient) };
@@ -176,7 +176,7 @@ impl<'a> SystemService for RamdiskService<'a> {
                 let cq = u.get_mr(1) as u32;
 
                 // Move capabilities after reading registers
-                CSPACE_CAP.move_cap(recv_slot, NOTIFY_SLOT)?;
+                CSPACE_CAP.transfer_self(recv_slot, NOTIFY_SLOT)?;
 
                 handle_cap_call(u, |_| {
                     // Transfer notification endpoint

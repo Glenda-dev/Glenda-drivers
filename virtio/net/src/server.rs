@@ -243,7 +243,7 @@ impl<'a> SystemService for NetService<'a> {
                     let paddr = u.get_mr(2) as usize;
                     // Move the cap from recv window to a temporary slot
                     let slot = s.cspace_mgr.alloc(s.res)?;
-                    CSPACE_CAP.move_cap(s.recv, slot)?;
+                    CSPACE_CAP.transfer_self(s.recv, slot)?;
                     let frame = Frame::from(slot);
                     s.setup_shm(frame, vaddr, paddr, size)?;
                     Ok(())
@@ -255,7 +255,7 @@ impl<'a> SystemService for NetService<'a> {
                     let cq = u.get_mr(1) as u32;
 
                     let slot = s.cspace_mgr.alloc(s.res)?;
-                    CSPACE_CAP.move_cap(s.recv, slot)?;
+                    CSPACE_CAP.transfer_self(s.recv, slot)?;
                     let notify_ep = Endpoint::from(slot);
 
                     let frame = s.setup_ring(sq, cq, notify_ep, CapPtr::null())?;

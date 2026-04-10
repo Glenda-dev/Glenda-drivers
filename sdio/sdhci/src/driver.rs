@@ -26,7 +26,7 @@ impl DriverService for SdhciService<'_> {
         let irq_handler = self.dev.get_irq(Badge::null(), 0, IRQ_SLOT)?;
 
         // Mint a badged endpoint for IRQ notification
-        CSPACE_CAP.mint(self.endpoint.cap(), IRQ_EP_SLOT, irq_badge, Rights::ALL)?;
+        CSPACE_CAP.mint_self(self.endpoint.cap(), IRQ_EP_SLOT, irq_badge, Rights::ALL)?;
 
         irq_handler.set_notification(IRQ_EP)?;
         irq_handler.ack()?;

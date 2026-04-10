@@ -2,11 +2,11 @@ use crate::layout::{IRQ_BADGE, IRQ_CAP, IRQ_EP, IRQ_EP_SLOT, IRQ_SLOT, MMIO_SLOT
 use crate::Ns16550a;
 use crate::UartService;
 use glenda::cap::{Rights, CSPACE_CAP};
+use glenda::drivers::interface::DriverService;
 use glenda::error::Error;
 use glenda::interface::DeviceService;
 use glenda::interface::VSpaceService;
 use glenda::ipc::Badge;
-use glenda::drivers::interface::DriverService;
 
 impl<'a> DriverService for UartService<'a> {
     fn init(&mut self) -> Result<(), Error> {
@@ -28,7 +28,7 @@ impl<'a> DriverService for UartService<'a> {
         let irq_handler = self.dev.get_irq(Badge::null(), 0, IRQ_SLOT)?;
 
         // 3. Mint a badged endpoint for IRQ notification
-        CSPACE_CAP.mint(self.endpoint.cap(), IRQ_EP_SLOT, irq_badge, Rights::ALL)?;
+        CSPACE_CAP.mint_self(self.endpoint.cap(), IRQ_EP_SLOT, irq_badge, Rights::ALL)?;
 
         log!("Setting notification to {:?}", IRQ_EP);
         // 4. Configure Interrupt

@@ -108,7 +108,7 @@ impl<'a> SystemService for GpuService<'a> {
 
         // 2. Get and setup IRQ
         let irq_handler = self.dev.get_irq(Badge::null(), 0, IRQ_SLOT)?;
-        CSPACE_CAP.mint(
+        CSPACE_CAP.mint_self(
             self.endpoint.cap(),
             IRQ_NOTIFY_SLOT,
             Badge::new(IRQ_BADGE),
@@ -281,7 +281,7 @@ impl<'a> SystemService for GpuService<'a> {
                     let sq_entries = u.get_mr(0) as u32;
                     let cq_entries = u.get_mr(1) as u32;
 
-                    CSPACE_CAP.move_cap(recv_slot, slot)?;
+                    CSPACE_CAP.transfer_self(recv_slot, slot)?;
                     let notify_ep = Endpoint::from(slot);
 
                     let frame = s.setup_ring(sq_entries, cq_entries, notify_ep, CapPtr::null())?;

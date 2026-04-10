@@ -31,7 +31,7 @@ impl DriverService for RtcService<'_> {
         let irq = self.dev.get_irq(Badge::null(), 0, IRQ_SLOT)?;
 
         // Mint a badged endpoint for IRQ notification
-        CSPACE_CAP.mint(self.endpoint.cap(), self.recv, irq_badge, Rights::ALL)?;
+        CSPACE_CAP.mint_self(self.endpoint.cap(), self.recv, irq_badge, Rights::ALL)?;
 
         // 4. Configure Interrupt
         irq.set_notification(self.endpoint)?;

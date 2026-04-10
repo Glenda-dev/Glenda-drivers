@@ -115,7 +115,7 @@ impl<'a> SystemService for UartService<'a> {
                     let sq = u.get_mr(0) as u32;
                     let cq = u.get_mr(1) as u32;
                     // Move cap to predefined slot
-                    CSPACE_CAP.move_cap(recv_slot, slot)?;
+                    CSPACE_CAP.transfer_self(recv_slot, slot)?;
                     let notify_ep = Endpoint::from(slot);
                     let frame = s.setup_ring(sq, cq, notify_ep)?;
                     Ok(frame.cap())
@@ -128,7 +128,7 @@ impl<'a> SystemService for UartService<'a> {
                     let vaddr = u.get_mr(0);
                     let size = u.get_mr(1);
                     let paddr = u.get_mr(2) as usize;
-                    CSPACE_CAP.move_cap(recv_slot, slot)?;
+                    CSPACE_CAP.transfer_self(recv_slot, slot)?;
                     let frame = Frame::from(slot);
                     s.setup_shm(frame, vaddr, paddr, size)?;
                     Ok(())

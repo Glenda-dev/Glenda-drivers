@@ -234,12 +234,12 @@ impl<'a> SystemService for BlockService<'a> {
                 handle_call(u, |u| {
                     let recv_slot = s.recv;
                     let slot = s.cspace_mgr.alloc(s.res)?;
-                    // Read args into local variables before move_cap
+                    // Read args into local variables before transfer
                     let vaddr = u.get_mr(0);
                     let size = u.get_mr(1);
                     let paddr = u.get_mr(2) as usize;
 
-                    CSPACE_CAP.move_cap(recv_slot, slot)?;
+                    CSPACE_CAP.transfer_self(recv_slot, slot)?;
 
                     let frame = Frame::from(slot);
                     s.setup_shm(frame, vaddr, paddr, size)?;
@@ -250,11 +250,11 @@ impl<'a> SystemService for BlockService<'a> {
                 handle_cap_call(u, |u| {
                     let recv_slot = s.recv;
                     let slot = s.cspace_mgr.alloc(s.res)?;
-                    // Read args into local variables before move_cap
+                    // Read args into local variables before transfer
                     let sq = u.get_mr(0) as u32;
                     let cq = u.get_mr(1) as u32;
 
-                    CSPACE_CAP.move_cap(recv_slot, slot)?;
+                    CSPACE_CAP.transfer_self(recv_slot, slot)?;
 
                     // The client passed its notification endpoint in the UTCB.
                     // It was moved to slot.

@@ -30,7 +30,7 @@ impl DriverService for NetService<'_> {
         log!("Got IRQ cap: {:?}", irq);
 
         // Mint a badged endpoint for IRQ notification
-        CSPACE_CAP.mint(self.endpoint.cap(), IRQ_EP_SLOT, irq_badge, Rights::ALL)?;
+        CSPACE_CAP.mint_self(self.endpoint.cap(), IRQ_EP_SLOT, irq_badge, Rights::ALL)?;
         irq.set_notification(IRQ_EP)?;
 
         let (paddr, frame) = self.res.dma_alloc(Badge::null(), 4, DMA_SLOT)?;

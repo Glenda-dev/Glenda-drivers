@@ -137,10 +137,6 @@ impl VirtIOBlk {
             return;
         }
 
-        if count > 0 {
-            log!("Processing {} SQEs", count);
-        }
-
         for i in 0..count {
             let sqe = sqes[i];
             if let Err(e) = self.submit_virtio_request(sqe) {
@@ -179,8 +175,6 @@ impl VirtIOBlk {
         let status_ptr =
             unsafe { self.dma_vaddr.add(64 * core::mem::size_of::<VirtIOBlkReq>() + req_idx) };
 
-        log!("req_ptr={:p}, status_ptr={:p}", req_ptr, status_ptr);
-
         let (virtio_type, is_write) = match sqe.opcode {
             io_uring::IOURING_OP_READ => (VIRTIO_BLK_T_IN, false),
             io_uring::IOURING_OP_WRITE => (VIRTIO_BLK_T_OUT, true),
@@ -215,14 +209,6 @@ impl VirtIOBlk {
             // Fallback to absolute paddr if no SHM (risky, but was previous behavior)
             sqe.addr
         };
-
-        log!(
-            "Submitting VirtIO request: opcode={}, addr={:#x}, offset={:#x}, len={}",
-            sqe.opcode,
-            sqe.addr,
-            sqe.off,
-            sqe.len,
-        );
 
         let d1 = queue.alloc_desc().ok_or(Error::OutOfMemory)?;
         let d2 = queue.alloc_desc().ok_or(Error::OutOfMemory)?;

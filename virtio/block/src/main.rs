@@ -16,7 +16,7 @@ use crate::layout::{DEVICE_CAP, DEVICE_SLOT};
 use glenda::cap::CapType;
 use glenda::cap::{ENDPOINT_CAP, ENDPOINT_SLOT, MONITOR_CAP, RECV_SLOT, REPLY_SLOT};
 use glenda::client::{DeviceClient, ResourceClient};
-use glenda::interface::{ResourceService, SystemService};
+use glenda::interface::{DeviceService, ResourceService, SystemService};
 use glenda::ipc::Badge;
 use glenda::protocol::resource::{ResourceType, DEVICE_ENDPOINT};
 use glenda::utils::manager::{CSpaceManager, VSpaceManager};
@@ -44,7 +44,19 @@ fn main() -> usize {
         BlockService::new(&mut dev_client, &mut res_client, &mut cspace_mgr, &mut vspace_mgr);
     service.listen(ENDPOINT_CAP, REPLY_SLOT, RECV_SLOT).expect("Failed to listen");
 
-    SystemService::init(&mut service).expect("Failed to init block service");
+    if let Err(e) = SystemService::init(&mut service) {
+        error!("Failed to init block service: {:?}", e);
+        let _ = service
+            .dev
+            .report_state(Badge::null(), glenda::protocol::init::ServiceState::Failed);
+        return 1;
+    }
+    if let Err(e) = service
+        .dev
+        .report_state(Badge::null(), glenda::protocol::init::ServiceState::Running)
+    {
+        warn!("Failed to report driver running state: {:?}", e);
+    }
 
     service.run().expect("Block service crashed");
     0

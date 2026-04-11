@@ -7,8 +7,9 @@ extern crate glenda;
 extern crate alloc;
 use glenda::cap::MONITOR_CAP;
 use glenda::client::{DeviceClient, ResourceClient};
-use glenda::interface::ResourceService;
+use glenda::interface::{DeviceService, ResourceService};
 use glenda::ipc::Badge;
+use glenda::protocol::init::ServiceState;
 use glenda::protocol::resource::{ResourceType, DEVICE_ENDPOINT};
 
 mod driver;
@@ -41,16 +42,28 @@ fn main() -> usize {
 
     let mut dev_client = DeviceClient::new(DEVICE_CAP);
 
-    let mut driver = PciBusDriver::new(
-        glenda::cap::Endpoint::from(ENDPOINT_SLOT),
-        &mut dev_client,
-        &mut res_client,
-    );
+    let status = {
+        let mut driver = PciBusDriver::new(
+            glenda::cap::Endpoint::from(ENDPOINT_SLOT),
+            &mut dev_client,
+            &mut res_client,
+        );
 
-    log!("Scanning for PCI Host Bridge...");
+        log!("Scanning for PCI Host Bridge...");
 
-    if let Err(e) = driver.scan() {
-        log!("PCI Scan failed: {:?}", e);
+        match driver.scan() {
+            Ok(_) => ServiceState::Running,
+            Err(e) => {
+                log!("PCI Scan failed: {:?}", e);
+                ServiceState::Failed
+            }
+        }
+    };
+
+    if let Err(e) = dev_client.report_state(Badge::null(), status) {
+        warn!("Failed to report driver state: {:?}", e);
+    }
+    if status == ServiceState::Failed {
         return 1;
     }
 

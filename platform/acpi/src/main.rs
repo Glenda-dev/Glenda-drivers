@@ -12,6 +12,7 @@ use glenda::cap::MONITOR_CAP;
 use glenda::client::{DeviceClient, ResourceClient};
 use glenda::interface::{DeviceService, ResourceService};
 use glenda::ipc::Badge;
+use glenda::protocol::init::ServiceState;
 use glenda::protocol::resource::ResourceType;
 use glenda::protocol::resource::DEVICE_ENDPOINT;
 use glenda::drivers::interface::BusDriver;
@@ -56,9 +57,15 @@ fn main() -> usize {
             if let Err(e) = dev_client.report(Badge::null(), devices) {
                 error!("Failed to report devices: {:?}", e);
             }
+            if let Err(e) = driver.dev.report_state(Badge::null(), ServiceState::Running) {
+                warn!("Failed to report driver running state: {:?}", e);
+            }
         }
         Err(e) => {
             error!("Probe failed (not ACPI platform?): {:?}", e);
+            if let Err(e) = driver.dev.report_state(Badge::null(), ServiceState::Failed) {
+                warn!("Failed to report driver failed state: {:?}", e);
+            }
         }
     }
 

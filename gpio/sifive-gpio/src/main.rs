@@ -19,7 +19,7 @@ use crate::layout::{DEVICE_CAP, DEVICE_SLOT};
 use glenda::cap::{CapType, CSPACE_CAP, VSPACE_CAP};
 use glenda::cap::{ENDPOINT_CAP, ENDPOINT_SLOT, MONITOR_CAP, RECV_SLOT, REPLY_SLOT};
 use glenda::client::{DeviceClient, ResourceClient};
-use glenda::interface::{ResourceService, SystemService};
+use glenda::interface::{DeviceService, ResourceService, SystemService};
 use glenda::ipc::Badge;
 use glenda::protocol::resource::{ResourceType, DEVICE_ENDPOINT};
 use glenda::utils::manager::{CSpaceManager, VSpaceManager};
@@ -44,6 +44,12 @@ fn main() -> usize {
     service.listen(ENDPOINT_CAP, REPLY_SLOT, RECV_SLOT).expect("Failed to listen");
 
     SystemService::init(&mut service).expect("Failed to init GPIO service");
+    if let Err(e) = service
+        .dev
+        .report_state(Badge::null(), glenda::protocol::init::ServiceState::Running)
+    {
+        warn!("Failed to report driver running state: {:?}", e);
+    }
 
     service.run().expect("GPIO service crashed");
     0

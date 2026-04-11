@@ -14,7 +14,7 @@ pub use driver::DtbDriver;
 
 use glenda::cap::{CapType, Endpoint, CSPACE_CAP, MONITOR_CAP, VSPACE_CAP};
 use glenda::client::{DeviceClient, ResourceClient};
-use glenda::interface::{ResourceService, SystemService};
+use glenda::interface::{DeviceService, ResourceService, SystemService};
 use glenda::ipc::Badge;
 use glenda::protocol::resource::ResourceType;
 use glenda::utils::manager::{CSpaceManager, VSpaceManager};
@@ -55,7 +55,14 @@ fn main() -> usize {
     // 2. Interact with SystemService for initialization
     if let Err(e) = SystemService::init(&mut driver) {
         error!("Init failed: {:?}", e);
+        let _ =
+            driver.dev_client.report_state(Badge::null(), glenda::protocol::init::ServiceState::Failed);
         return 1;
+    }
+    if let Err(e) =
+        driver.dev_client.report_state(Badge::null(), glenda::protocol::init::ServiceState::Running)
+    {
+        warn!("Failed to report driver running state: {:?}", e);
     }
 
     // 3. Start Server Loop

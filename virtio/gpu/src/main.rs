@@ -16,7 +16,7 @@ use crate::layout::{DEVICE_CAP, DEVICE_SLOT};
 use crate::server::GpuService;
 use glenda::cap::{CapType, CSPACE_CAP, ENDPOINT_CAP, MONITOR_CAP, REPLY_SLOT, VSPACE_CAP};
 use glenda::client::{DeviceClient, ResourceClient};
-use glenda::interface::{ResourceService, SystemService};
+use glenda::interface::{DeviceService, ResourceService, SystemService};
 use glenda::ipc::Badge;
 use glenda::protocol::resource::ResourceType;
 use glenda::utils::manager::{CSpaceManager, VSpaceManager};
@@ -49,7 +49,16 @@ fn main() -> usize {
     );
     if let Err(e) = service.init() {
         error!("Failed to initialize GPU service: {:?}", e);
+        let _ = service
+            .dev
+            .report_state(Badge::null(), glenda::protocol::init::ServiceState::Failed);
         return 1;
+    }
+    if let Err(e) = service
+        .dev
+        .report_state(Badge::null(), glenda::protocol::init::ServiceState::Running)
+    {
+        warn!("Failed to report driver running state: {:?}", e);
     }
     if let Err(e) = service.run() {
         error!("Failed to run GPU service: {:?}", e);

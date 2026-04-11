@@ -16,6 +16,7 @@ use glenda::client::{DeviceClient, ResourceClient};
 use glenda::drivers::interface::ProbeDriver;
 use glenda::interface::{DeviceService, ResourceService};
 use glenda::ipc::Badge;
+use glenda::protocol::init::ServiceState;
 use glenda::protocol::resource::{ResourceType, DEVICE_ENDPOINT};
 use glenda::utils::manager::{CSpaceManager, VSpaceManager};
 
@@ -36,27 +37,35 @@ fn main() -> usize {
     }
 
     let mut dev_client = DeviceClient::new(DEVICE_CAP);
-    let mut driver = driver::VirtioMmioDriver::new(
-        &mut dev_client,
-        &mut res_client,
-        &mut vspace_mgr,
-        &mut cspace_mgr,
-    );
+    let state = {
+        let mut driver = driver::VirtioMmioDriver::new(
+            &mut dev_client,
+            &mut res_client,
+            &mut vspace_mgr,
+            &mut cspace_mgr,
+        );
 
-    match driver.probe() {
-        Ok(res) => {
-            if !res.is_empty() {
-                log!("Probe successful: {:?}", res);
-                if let Err(e) = dev_client.update(Badge::null(), res) {
-                    error!("Failed to update device info: {:?}", e);
+        match driver.probe() {
+            Ok(res) => {
+                if !res.is_empty() {
+                    log!("Probe successful: {:?}", res);
+                    if let Err(e) = dev_client.update(Badge::null(), res) {
+                        error!("Failed to update device info: {:?}", e);
+                    }
+                } else {
+                    log!("Probe complete: no specific device identified.");
                 }
-            } else {
-                log!("Probe complete: no specific device identified.");
+                ServiceState::Running
+            }
+            Err(e) => {
+                error!("Probe failed: {:?}", e);
+                ServiceState::Failed
             }
         }
-        Err(e) => {
-            error!("Probe failed: {:?}", e);
-        }
+    };
+
+    if let Err(e) = dev_client.report_state(Badge::null(), state) {
+        warn!("Failed to report driver state: {:?}", e);
     }
     0
 }

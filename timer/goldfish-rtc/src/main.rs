@@ -20,7 +20,7 @@ use glenda::cap::{
     VSPACE_CAP,
 };
 use glenda::client::{DeviceClient, ResourceClient};
-use glenda::interface::{ResourceService, SystemService};
+use glenda::interface::{DeviceService, ResourceService, SystemService};
 use glenda::ipc::Badge;
 use glenda::protocol::resource::{ResourceType, DEVICE_ENDPOINT};
 use glenda::utils::manager::{CSpaceManager, VSpaceManager};
@@ -46,7 +46,19 @@ fn main() -> usize {
     let mut service = RtcService::new(&mut dev_client, &mut res_client, &mut vspace, &mut cspace);
     service.listen(ENDPOINT_CAP, REPLY_SLOT, RECV_SLOT).expect("Failed to listen");
 
-    SystemService::init(&mut service).expect("Failed to init RTC service");
+    if let Err(e) = SystemService::init(&mut service) {
+        error!("Failed to init RTC service: {:?}", e);
+        let _ = service
+            .dev
+            .report_state(Badge::null(), glenda::protocol::init::ServiceState::Failed);
+        return 1;
+    }
+    if let Err(e) = service
+        .dev
+        .report_state(Badge::null(), glenda::protocol::init::ServiceState::Running)
+    {
+        warn!("Failed to report driver running state: {:?}", e);
+    }
 
     service.run().expect("RTC service crashed");
     0

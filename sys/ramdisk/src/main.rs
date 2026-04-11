@@ -16,7 +16,7 @@ use glenda::cap::{
     REPLY_SLOT, Reply, VSPACE_CAP,
 };
 use glenda::client::{DeviceClient, ResourceClient};
-use glenda::interface::{ResourceService, SystemService};
+use glenda::interface::{DeviceService, ResourceService, SystemService};
 use glenda::ipc::Badge;
 use glenda::protocol::resource::{DEVICE_ENDPOINT, ResourceType};
 use glenda::utils::manager::{CSpaceManager, VSpaceManager};
@@ -82,6 +82,12 @@ fn main() -> usize {
     if let Err(e) = SystemService::init(&mut service) {
         error!("Failed to initialize: {:?}", e);
         return 1;
+    }
+    if let Err(e) = service
+        .dev
+        .report_state(Badge::null(), glenda::protocol::init::ServiceState::Running)
+    {
+        warn!("Failed to report driver running state: {:?}", e);
     }
 
     if let Err(e) = service.run() {

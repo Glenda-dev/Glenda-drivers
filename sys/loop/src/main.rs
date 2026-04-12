@@ -5,7 +5,7 @@
 extern crate glenda;
 extern crate alloc;
 
-use glenda::cap::{CapType, ENDPOINT_SLOT, MONITOR_CAP};
+use glenda::cap::{CapPtr, CapType, ENDPOINT_SLOT, MONITOR_CAP};
 use glenda::client::{FsClient, ProcessClient, ResourceClient};
 use glenda::interface::{FileSystemService, ResourceService};
 use glenda::ipc::Badge;
@@ -33,14 +33,15 @@ fn main() -> usize {
     let mut vfs_client = FsClient::new(MONITOR_CAP);
     log!("Opening /disk.img...");
 
-    let file_badge = match vfs_client.open(Badge::null(), "/disk.img", OpenFlags::O_RDWR, 0) {
+    let file_badge =
+        match vfs_client.open(Badge::null(), "/disk.img", OpenFlags::O_RDWR, 0, CapPtr::null()) {
         Ok(b) => b,
         Err(e) => {
             log!("Failed to open /disk.img: {:?}", e);
             // Fallback for testing: maybe just assume 0 if open fails? No, return.
             return 1;
         }
-    };
+        };
     log!("Opened /disk.img, handle: {}", file_badge);
 
     // 3. Create Server

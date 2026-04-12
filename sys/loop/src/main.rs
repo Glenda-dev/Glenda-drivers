@@ -35,12 +35,12 @@ fn main() -> usize {
 
     let file_badge =
         match vfs_client.open(Badge::null(), "/disk.img", OpenFlags::O_RDWR, 0, CapPtr::null()) {
-        Ok(b) => b,
-        Err(e) => {
-            log!("Failed to open /disk.img: {:?}", e);
-            // Fallback for testing: maybe just assume 0 if open fails? No, return.
-            return 1;
-        }
+            Ok(b) => b,
+            Err(e) => {
+                log!("Failed to open /disk.img: {:?}", e);
+                // Fallback for testing: maybe just assume 0 if open fails? No, return.
+                return 1;
+            }
         };
     log!("Opened /disk.img, handle: {}", file_badge);
 

@@ -9,3 +9,4 @@ pub const DEVICE_CAP: Endpoint = Endpoint::from(DEVICE_SLOT);
 
 // Where we map the device tree / ACPI tables in our VSpace
 pub const MAP_VA: usize = 0x4000_0000;
+pub const REPORT_VA: usize = 0x4020_0000;

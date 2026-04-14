@@ -1,5 +1,5 @@
 use crate::layout::{MAP_VA, MMIO_SLOT};
-use alloc::string::{String, ToString};
+use alloc::string::ToString;
 use alloc::vec::Vec;
 use glenda::arch::mem::PGSIZE;
 use glenda::cap::{CapPtr, Endpoint, Frame, Reply};
@@ -10,7 +10,7 @@ use glenda::error::Error;
 use glenda::interface::{DeviceService, VSpaceService};
 use glenda::ipc::Badge;
 use glenda::mem::Perms;
-use glenda::protocol::device::{DeviceDesc, DeviceDescNode, MMIORegion};
+use glenda::protocol::device::DeviceDescNode;
 use glenda::utils::align::align_up;
 use glenda::utils::manager::{CSpaceManager, VSpaceManager};
 
@@ -67,62 +67,13 @@ impl<'a> DtbDriver<'a> {
             cspace_mgr,
         }
     }
-
-    fn parse_node(
-        &self,
-        node: fdt::node::FdtNode,
-        parent_idx: usize,
-        devices: &mut Vec<DeviceDescNode>,
-    ) {
-        let name = node.name.to_string();
-        let compatible: Vec<String> =
-            node.compatible().map(|c| c.all().map(|s| s.to_string()).collect()).unwrap_or_default();
-
-        let mut mmio_regions = Vec::new();
-        let mut irqs = Vec::new();
-
-        if let Some(reg) = node.reg() {
-            for r in reg {
-                if let Some(size) = r.size {
-                    mmio_regions.push(MMIORegion {
-                        base_addr: r.starting_address as usize,
-                        size: size as usize,
-                    });
-                }
-            }
-        }
-
-        if let Some(interrupts) = node.interrupts() {
-            for i in interrupts {
-                irqs.push(i as usize);
-            }
-        }
-
-        let desc = DeviceDesc { name, compatible, mmio: mmio_regions, irq: irqs };
-
-        let current_idx = devices.len();
-        devices.push(DeviceDescNode { parent: parent_idx, desc });
-
-        for child in node.children() {
-            self.parse_node(child, current_idx, devices);
-        }
-    }
 }
 
 impl<'a> DtbDriver<'a> {
     pub fn probe(&mut self) -> Result<Vec<DeviceDescNode>, Error> {
         // Assume FDT is mapped at MAP_VA
         let fdt_slice = unsafe { core::slice::from_raw_parts(MAP_VA as *const u8, 0x100000) };
-        let fdt = fdt::Fdt::new(fdt_slice).map_err(|_| Error::InvalidArgs)?;
-
-        let mut devices = Vec::new();
-
-        // Start from root, index MAX for root parent
-        if let Some(root) = fdt.find_node("/") {
-            self.parse_node(root, usize::MAX, &mut devices);
-        }
-
-        Ok(devices)
+        crate::parser::parse_dtb_blob(fdt_slice)
     }
 }
 

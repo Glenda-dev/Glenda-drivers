@@ -1,7 +1,7 @@
 use alloc::format;
 use alloc::string::ToString;
 use alloc::vec::Vec;
-use glenda::protocol::device::{DeviceDesc, DeviceDescNode, MMIORegion};
+use glenda::protocol::device::{DeviceDesc, DeviceDescNode, DeviceNodeMeta, MMIORegion};
 
 pub fn parse_madt(madt: &acpi::sdt::madt::Madt, devices: &mut Vec<DeviceDescNode>) {
     log!("Found MADT (x86 Manual Parsing)");
@@ -15,6 +15,12 @@ pub fn parse_madt(madt: &acpi::sdt::madt::Madt, devices: &mut Vec<DeviceDescNode
             compatible: alloc::vec!["intel,lapic".to_string()],
             mmio: alloc::vec![MMIORegion { base_addr: lapic_addr as usize, size: 0x1000 }],
             irq: Vec::new(),
+        },
+        meta: DeviceNodeMeta {
+            bus: Some("platform".to_string()),
+            unit_addr: Some(lapic_addr as usize),
+            tags: alloc::vec!["src:acpi".to_string(), "acpi:madt".to_string()],
+            properties: alloc::vec![("acpi.madt.type".to_string(), "lapic".to_string())],
         },
     });
 
@@ -50,6 +56,16 @@ pub fn parse_madt(madt: &acpi::sdt::madt::Madt, devices: &mut Vec<DeviceDescNode
                                 size: 0x1000
                             }],
                             irq: Vec::new(),
+                        },
+                        meta: DeviceNodeMeta {
+                            bus: Some("platform".to_string()),
+                            unit_addr: Some(addr as usize),
+                            tags: alloc::vec!["src:acpi".to_string(), "acpi:madt".to_string()],
+                            properties: alloc::vec![
+                                ("acpi.madt.type".to_string(), "ioapic".to_string()),
+                                ("acpi.ioapic.id".to_string(), alloc::format!("{}", id)),
+                                ("acpi.ioapic.gsi_base".to_string(), alloc::format!("{}", gsi)),
+                            ],
                         },
                     });
                 }

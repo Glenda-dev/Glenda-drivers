@@ -1,6 +1,6 @@
 use alloc::string::ToString;
 use alloc::vec::Vec;
-use glenda::protocol::device::{DeviceDesc, DeviceDescNode, MMIORegion};
+use glenda::protocol::device::{DeviceDesc, DeviceDescNode, DeviceNodeMeta, MMIORegion};
 
 pub fn parse(
     tables: &acpi::AcpiTables<crate::handler::HandlerWrapper>,
@@ -17,6 +17,12 @@ pub fn parse(
                 compatible: alloc::vec!["intel,hpet".to_string()],
                 mmio: alloc::vec![MMIORegion { base_addr: addr, size: 0x1000 }],
                 irq: Vec::new(),
+            },
+            meta: DeviceNodeMeta {
+                bus: Some("platform".to_string()),
+                unit_addr: Some(addr),
+                tags: alloc::vec!["src:acpi".to_string(), "acpi:hpet".to_string()],
+                properties: alloc::vec![("acpi.hpet.base".to_string(), alloc::format!("{}", addr))],
             },
         });
     }

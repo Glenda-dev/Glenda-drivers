@@ -17,7 +17,14 @@ impl<'a> SystemService for DtbDriver<'a> {
         log!("Probing devices...");
         let devices = self.probe()?;
         log!("Found {} devices", devices.len());
-        self.dev_client.report(Badge::null(), devices)?;
+        self.dev_client.report_via_frame(
+            Badge::null(),
+            devices,
+            self.res_client,
+            self.vspace_mgr,
+            self.cspace_mgr,
+            crate::layout::REPORT_VA,
+        )?;
 
         // 3. Register logic devices (Platform/Power and Thermal)
         if self.has_power_off || self.has_reboot {

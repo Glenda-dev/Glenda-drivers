@@ -3,7 +3,7 @@ use alloc::format;
 use alloc::string::ToString;
 use alloc::vec::Vec;
 use core::mem;
-use glenda::protocol::device::{DeviceDesc, DeviceDescNode, MMIORegion};
+use glenda::protocol::device::{DeviceDesc, DeviceDescNode, DeviceNodeMeta, MMIORegion};
 
 // RISC-V ACPI MADT Entry Types
 const MADT_TYPE_RINTC: u8 = 24;
@@ -74,6 +74,7 @@ pub fn parse_madt(madt: &Madt, devices: &mut Vec<DeviceDescNode>) {
                     let aplic = &*(entry_ptr as *const AplicEntry);
                     let base_addr = aplic.base_addr;
                     let size = aplic.size;
+                    let aplic_id = aplic.id;
                     log!("  Found APLIC: base={:#x}", base_addr);
                     devices.push(DeviceDescNode {
                         parent: usize::MAX,
@@ -85,6 +86,15 @@ pub fn parse_madt(madt: &Madt, devices: &mut Vec<DeviceDescNode>) {
                                 size: size as usize
                             }],
                             irq: Vec::new(),
+                        },
+                        meta: DeviceNodeMeta {
+                            bus: Some("platform".to_string()),
+                            unit_addr: Some(base_addr as usize),
+                            tags: alloc::vec!["src:acpi".to_string(), "acpi:madt".to_string()],
+                            properties: alloc::vec![
+                                ("acpi.madt.type".to_string(), "aplic".to_string()),
+                                ("acpi.aplic.id".to_string(), alloc::format!("{}", aplic_id)),
+                            ],
                         },
                     });
                 }
@@ -98,6 +108,8 @@ pub fn parse_madt(madt: &Madt, devices: &mut Vec<DeviceDescNode>) {
                     let plic = &*(entry_ptr as *const PlicEntry);
                     let base_addr = plic.base_addr;
                     let size = plic.size;
+                    let plic_id = plic.id;
+                    let gsi_base = plic.gsi_base;
                     log!("  Found PLIC: base={:#x}", base_addr);
                     devices.push(DeviceDescNode {
                         parent: usize::MAX,
@@ -112,6 +124,16 @@ pub fn parse_madt(madt: &Madt, devices: &mut Vec<DeviceDescNode>) {
                                 size: size as usize
                             }],
                             irq: Vec::new(),
+                        },
+                        meta: DeviceNodeMeta {
+                            bus: Some("platform".to_string()),
+                            unit_addr: Some(base_addr as usize),
+                            tags: alloc::vec!["src:acpi".to_string(), "acpi:madt".to_string()],
+                            properties: alloc::vec![
+                                ("acpi.madt.type".to_string(), "plic".to_string()),
+                                ("acpi.plic.id".to_string(), alloc::format!("{}", plic_id)),
+                                ("acpi.plic.gsi_base".to_string(), alloc::format!("{}", gsi_base)),
+                            ],
                         },
                     });
                 }

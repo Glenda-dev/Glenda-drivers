@@ -25,20 +25,36 @@ impl<'a> DriverService for UartService<'a> {
         )?;
 
         let irq_badge = Badge::new(IRQ_BADGE);
-        let irq_handler = self.dev.get_irq(Badge::null(), 0, IRQ_SLOT)?;
+        let mut irq_enabled = false;
+        match self.dev.get_irq(Badge::null(), 0, IRQ_SLOT) {
+            Ok(irq_handler) => {
+                // 3. Mint a badged endpoint for IRQ notification
+                CSPACE_CAP.mint_self(self.endpoint.cap(), IRQ_EP_SLOT, irq_badge, Rights::ALL)?;
 
-        // 3. Mint a badged endpoint for IRQ notification
-        CSPACE_CAP.mint_self(self.endpoint.cap(), IRQ_EP_SLOT, irq_badge, Rights::ALL)?;
-
-        log!("Setting notification to {:?}", IRQ_EP);
-        // 4. Configure Interrupt
-        // We use our badged endpoint to receive interrupts.
-        irq_handler.set_notification(IRQ_EP)?;
+                log!("Setting notification to {:?}", IRQ_EP);
+                // 4. Configure Interrupt
+                // We use our badged endpoint to receive interrupts.
+                match irq_handler.set_notification(IRQ_EP) {
+                    Ok(()) => {
+                        irq_enabled = true;
+                    }
+                    Err(e) => {
+                        warn!("IRQ notification unavailable, falling back to polling mode: {:?}", e);
+                    }
+                }
+            }
+            Err(e) => {
+                warn!("No valid IRQ exposed by parent device, fallback to polling mode: {:?}", e);
+            }
+        }
 
         // 5. Init Hardware
         // IRQ is enabled by `init_hw`.
         let uart = Ns16550a::new(MMIO_VA, IRQ_CAP);
         uart.init_hw();
+        if !irq_enabled {
+            warn!("NS16550A running without IRQ notifications (polling mode)");
+        }
         self.uart = Some(uart);
 
         // 6. Register logical device to Unicorn

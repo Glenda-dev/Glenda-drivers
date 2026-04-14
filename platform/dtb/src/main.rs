@@ -7,6 +7,7 @@ extern crate glenda;
 extern crate alloc;
 mod driver;
 mod layout;
+mod parser;
 mod server;
 
 use crate::layout::{DEVICE_CAP, DEVICE_SLOT, ENDPOINT_SLOT};

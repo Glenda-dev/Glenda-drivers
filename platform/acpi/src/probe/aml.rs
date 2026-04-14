@@ -4,7 +4,7 @@ use alloc::string::ToString;
 use alloc::vec;
 use alloc::vec::Vec;
 use aml::{AmlContext, AmlError, AmlName, AmlValue, DebugVerbosity};
-use glenda::protocol::device::{DeviceDesc, DeviceDescNode};
+use glenda::protocol::device::{DeviceDesc, DeviceDescNode, DeviceNodeMeta};
 
 pub fn parse(
     tables: &acpi::AcpiTables<crate::handler::HandlerWrapper>,
@@ -176,9 +176,18 @@ pub fn parse(
                     parent: usize::MAX,
                     desc: DeviceDesc {
                         name: path_str.split('.').last().unwrap_or("unknown").to_string(),
-                        compatible: vec![hid],
+                        compatible: vec![hid.clone()],
                         mmio,
                         irq,
+                    },
+                    meta: DeviceNodeMeta {
+                        bus: None,
+                        unit_addr: None,
+                        tags: vec!["src:acpi".to_string(), "acpi:aml".to_string()],
+                        properties: vec![
+                            ("acpi.path".to_string(), path_str),
+                            ("acpi.hid".to_string(), hid),
+                        ],
                     },
                 });
             }

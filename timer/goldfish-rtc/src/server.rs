@@ -4,7 +4,7 @@ use glenda::client::DeviceClient;
 use glenda::client::ResourceClient;
 use glenda::drivers::interface::DriverService;
 use glenda::drivers::interface::TimerDriver;
-use glenda::drivers::protocol::timer::{GET_TIME, SET_ALARM, SET_TIME, STOP_ALARM};
+use glenda::drivers::protocol::timer::{GET_FREQ, GET_TIME, SET_ALARM, SET_TIME, STOP_ALARM};
 use glenda::drivers::protocol::TIMER_PROTO;
 use glenda::error::Error;
 use glenda::interface::SystemService;
@@ -68,6 +68,13 @@ impl<'a> RtcService<'a> {
     fn on_stop_alarm(&mut self, _utcb: &mut UTCB) -> Result<(), Error> {
         self.stop_alarm()?;
         _utcb.set_msg_tag(MsgTag::ok());
+        Ok(())
+    }
+
+    fn on_get_freq(&mut self, utcb: &mut UTCB) -> Result<(), Error> {
+        // Goldfish RTC 时间寄存器为纳秒粒度，按 1GHz 频率暴露给通用 TimerClient。
+        utcb.set_mr(0, 1_000_000_000usize);
+        utcb.set_msg_tag(MsgTag::ok());
         Ok(())
     }
 }
@@ -137,6 +144,7 @@ impl<'a> SystemService for RtcService<'a> {
     fn dispatch(&mut self, utcb: &mut UTCB) -> Result<(), Error> {
         glenda::ipc_dispatch! {
             self, utcb,
+            (TIMER_PROTO, GET_FREQ) => Self::on_get_freq,
             (TIMER_PROTO, GET_TIME) => Self::on_get_time,
             (TIMER_PROTO, SET_TIME) => Self::on_set_time,
             (TIMER_PROTO, SET_ALARM) => Self::on_set_alarm,

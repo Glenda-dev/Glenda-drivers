@@ -1,4 +1,4 @@
-use glenda::cap::{Endpoint, ENDPOINT_CAP, REPLY_CAP};
+use glenda::cap::{Endpoint, ENDPOINT_CAP, RECV_SLOT, REPLY_CAP, REPLY_SLOT};
 use glenda::error::Error;
 use glenda::ipc::{MsgFlags, MsgTag, UTCB};
 use glenda::protocol::{fs, FS_PROTO};
@@ -39,6 +39,9 @@ impl LoopBlockServer {
     pub fn run(&mut self) -> Result<(), Error> {
         loop {
             let mut utcb = unsafe { UTCB::new() };
+            utcb.clear();
+            utcb.set_reply_window(REPLY_SLOT);
+            utcb.set_recv_window(RECV_SLOT);
             if let Err(_) = ENDPOINT_CAP.recv(&mut utcb) {
                 continue;
             }
@@ -62,7 +65,11 @@ impl LoopBlockServer {
                 }
             };
             utcb.set_msg_tag(reply_tag);
-            let _ = REPLY_CAP.reply(&mut utcb);
+            if let Err(e) = REPLY_CAP.reply(&mut utcb)
+                && e != Error::InvalidCapability
+            {
+                warn!("loop: reply failed: {:?}", e);
+            }
         }
     }
 

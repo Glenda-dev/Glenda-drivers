@@ -1,6 +1,6 @@
 use crate::layout::*;
 use crate::UartService;
-use glenda::cap::{CapPtr, Endpoint, Frame, Reply, CSPACE_CAP};
+use glenda::cap::{CapPtr, Endpoint, Page, Reply, CSPACE_CAP};
 use glenda::drivers::interface::{DriverService, UartDriver};
 use glenda::drivers::protocol;
 use glenda::error::Error;
@@ -129,7 +129,7 @@ impl<'a> SystemService for UartService<'a> {
                     let size = u.get_mr(1);
                     let paddr = u.get_mr(2) as usize;
                     CSPACE_CAP.transfer_self(recv_slot, slot)?;
-                    let frame = Frame::from(slot);
+                    let frame = Page::from(slot);
                     s.setup_shm(frame, vaddr, paddr, size)?;
                     Ok(())
                 })

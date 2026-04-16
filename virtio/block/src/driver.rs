@@ -21,7 +21,7 @@ impl DriverService for BlockService<'_> {
         let (mmio, pa, size) = self.dev.get_mmio(Badge::null(), 0, MMIO_SLOT)?;
         log!("Got MMIO cap: addr={:#x}, size={:#x}", pa, size);
 
-        self.vspace_mgr.map_frame(
+        self.vspace_mgr.map_page(
             mmio,
             MMIO_VA,
             glenda::mem::Perms::READ | glenda::mem::Perms::WRITE,
@@ -56,7 +56,7 @@ impl DriverService for BlockService<'_> {
         log!("Allocating 4 pages of DMA memory...");
         let (paddr, frame) = self.res.dma_alloc(Badge::null(), 4, DMA_SLOT)?;
         log!("Mapping DMA: paddr={:#x}, len={:#x}", paddr, 4 * PGSIZE);
-        self.vspace_mgr.map_frame(
+        self.vspace_mgr.map_page(
             frame,
             DMA_VA,
             glenda::mem::Perms::READ | glenda::mem::Perms::WRITE,

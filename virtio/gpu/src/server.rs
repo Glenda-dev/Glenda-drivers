@@ -5,7 +5,7 @@ use crate::layout::{
 };
 use alloc::string::String;
 use core::ptr::NonNull;
-use glenda::cap::{CapPtr, CapType, Endpoint, Frame, IrqHandler, Reply, Rights, CSPACE_CAP};
+use glenda::cap::{CapPtr, CapType, Endpoint, Page, IrqHandler, Reply, Rights, CSPACE_CAP};
 use glenda::client::{DeviceClient, ResourceClient};
 use glenda::drivers::protocol::{fb, FB_PROTO};
 use glenda::error::Error;
@@ -61,13 +61,13 @@ impl<'a> GpuService<'a> {
         cq_entries: u32,
         notify_ep: Endpoint,
         _recv: CapPtr,
-    ) -> Result<Frame, Error> {
+    ) -> Result<Page, Error> {
         // Use RING_SLOT instead of allocating a temporary one if possible
         let slot = RING_SLOT;
-        let frame_cap = self.res.alloc(Badge::null(), CapType::Frame, 1, slot)?;
-        let frame = Frame::from(frame_cap);
+        let frame_cap = self.res.alloc(Badge::null(), CapType::Page, 1, slot)?;
+        let frame = Page::from(frame_cap);
 
-        self.vspace_mgr.map_frame(
+        self.vspace_mgr.map_page(
             frame.clone(),
             RING_VA,
             glenda::mem::Perms::READ | glenda::mem::Perms::WRITE,
@@ -96,7 +96,7 @@ impl<'a> SystemService for GpuService<'a> {
         log!("Driver init...");
         // 1. Get and map MMIO
         let (mmio, _pa, _size) = self.dev.get_mmio(Badge::null(), 0, MMIO_SLOT)?;
-        self.vspace_mgr.map_frame(
+        self.vspace_mgr.map_page(
             mmio,
             MMIO_VA,
             glenda::mem::Perms::READ | glenda::mem::Perms::WRITE,
@@ -125,7 +125,7 @@ impl<'a> SystemService for GpuService<'a> {
 
         // 4. Allocate and map DMA memory for command buffers and queues
         let (paddr, frame) = self.res.dma_alloc(Badge::null(), 4, DMA_SLOT)?;
-        self.vspace_mgr.map_frame(
+        self.vspace_mgr.map_page(
             frame,
             DMA_VA,
             glenda::mem::Perms::READ | glenda::mem::Perms::WRITE,

@@ -2,7 +2,7 @@ use crate::layout::MMIO_CAP;
 use acpi::PhysicalMapping;
 use core::ptr::NonNull;
 use glenda::arch::mem::PGSIZE;
-use glenda::cap::{CapPtr, Frame};
+use glenda::cap::{CapPtr, Page};
 use glenda::client::ResourceClient;
 use glenda::interface::MemoryService;
 use glenda::ipc::Badge;
@@ -50,7 +50,7 @@ impl acpi::Handler for HandlerWrapper {
         if let Err(e) = MMIO_CAP.get_frame(paddr_aligned, pages, slot) {
             panic!("Failed to map ACPI region {:#x} (pages={}): {:?}", paddr_aligned, pages, e);
         }
-        let frame = Frame::from(slot);
+        let frame = Page::from(slot);
 
         if let Err(e) = res.mmap(Badge::null(), frame, va, size_aligned) {
             panic!("Failed to mmap ACPI region: {:?}", e);

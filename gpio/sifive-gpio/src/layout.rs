@@ -1,7 +1,7 @@
-use glenda::cap::{CapPtr, Endpoint, Frame, IrqHandler};
+use glenda::cap::{CapPtr, Endpoint, Page, IrqHandler};
 
 pub const MMIO_SLOT: CapPtr = CapPtr::from(10);
-pub const MMIO_CAP: Frame = Frame::from(MMIO_SLOT);
+pub const MMIO_CAP: Page = Page::from(MMIO_SLOT);
 pub const MMIO_VA: usize = 0x80000000;
 
 pub const IRQ_SLOT: CapPtr = CapPtr::from(11);

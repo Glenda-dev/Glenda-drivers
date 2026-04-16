@@ -18,7 +18,7 @@ impl DriverService for RtcService<'_> {
         log!("Got MMIO cap: addr={:#x}, size={:#x}", pa, size);
 
         // 2. Map MMIO
-        self.vspace.map_frame(
+        self.vspace.map_page(
             mmio,
             MMIO_VA,
             Perms::READ | Perms::WRITE,

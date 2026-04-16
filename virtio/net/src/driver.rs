@@ -16,7 +16,7 @@ impl DriverService for NetService<'_> {
         let (mmio, pa, size) = self.dev.get_mmio(Badge::null(), 0, MMIO_SLOT)?;
         log!("Got MMIO cap: addr={:#x}, size={:#x}", pa, size);
 
-        self.vspace_mgr.map_frame(
+        self.vspace_mgr.map_page(
             mmio,
             MMIO_VA,
             glenda::mem::Perms::READ | glenda::mem::Perms::WRITE,
@@ -34,7 +34,7 @@ impl DriverService for NetService<'_> {
         irq.set_notification(IRQ_EP)?;
 
         let (paddr, frame) = self.res.dma_alloc(Badge::null(), 4, DMA_SLOT)?;
-        self.vspace_mgr.map_frame(
+        self.vspace_mgr.map_page(
             frame,
             DMA_VA,
             glenda::mem::Perms::READ | glenda::mem::Perms::WRITE,

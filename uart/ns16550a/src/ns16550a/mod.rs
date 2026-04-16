@@ -5,7 +5,7 @@ use crate::layout::SHM_VA;
 use alloc::collections::VecDeque;
 use config::*;
 use consts::*;
-use glenda::cap::{Frame, IrqHandler};
+use glenda::cap::{Page, IrqHandler};
 use glenda::drivers::interface::UartDriver;
 use glenda::error::Error;
 use glenda::io::ring_buffer::ShmRingBuffer;
@@ -43,7 +43,7 @@ impl Ns16550a {
 
     pub fn setup_shm(
         &mut self,
-        frame: Frame,
+        frame: Page,
         client_vaddr: usize,
         paddr: usize,
         size: usize,

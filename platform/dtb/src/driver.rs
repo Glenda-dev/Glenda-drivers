@@ -2,7 +2,7 @@ use crate::layout::{MAP_VA, MMIO_SLOT};
 use alloc::string::ToString;
 use alloc::vec::Vec;
 use glenda::arch::mem::PGSIZE;
-use glenda::cap::{CapPtr, Endpoint, Frame, Reply};
+use glenda::cap::{CapPtr, Endpoint, Page, Reply};
 use glenda::client::{DeviceClient, ResourceClient};
 use glenda::drivers::interface::DriverService;
 use glenda::drivers::protocol::thermal;
@@ -85,8 +85,8 @@ impl<'a> DriverService for DtbDriver<'a> {
         log!("Got DTB MMIO: cap={:?}, addr={:#x}, size={:#x}", fdt_cap, fdt_addr, fdt_size);
 
         // 2. Map DTB
-        self.vspace_mgr.map_frame(
-            Frame::from(fdt_cap.into()),
+        self.vspace_mgr.map_page(
+            Page::from(fdt_cap.into()),
             MAP_VA,
             Perms::READ | Perms::WRITE,
             align_up(fdt_size, PGSIZE) / PGSIZE,

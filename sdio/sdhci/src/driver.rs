@@ -13,7 +13,7 @@ impl DriverService for SdhciService<'_> {
         log!("SDHCI Driver init...");
 
         let (mmio, _, _) = self.dev.get_mmio(Badge::null(), 0, MMIO_SLOT)?;
-        self.vspace.map_frame(
+        self.vspace.map_page(
             mmio,
             MMIO_VA,
             Perms::READ | Perms::WRITE,

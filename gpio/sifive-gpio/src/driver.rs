@@ -16,7 +16,7 @@ impl DriverService for GpioService<'_> {
         let (mmio, _, _) = self.dev.get_mmio(Badge::null(), 0, MMIO_SLOT)?;
 
         // 2. Map MMIO
-        self.vspace.map_frame(
+        self.vspace.map_page(
             mmio,
             MMIO_VA,
             Perms::READ | Perms::WRITE,

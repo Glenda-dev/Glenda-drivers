@@ -1,6 +1,6 @@
 use crate::layout::SHM_VA;
 use crate::net::VirtIONet;
-use glenda::cap::{CapPtr, Endpoint, Frame, Reply, CSPACE_CAP};
+use glenda::cap::{CapPtr, Endpoint, Page, Reply, CSPACE_CAP};
 use glenda::client::{DeviceClient, ResourceClient};
 use glenda::drivers::interface::{DriverService, NetDriver};
 use glenda::drivers::protocol::net::MacAddress;
@@ -52,13 +52,13 @@ impl<'a> NetService<'a> {
         cq_entries: u32,
         notify_ep: Endpoint,
         _recv: CapPtr,
-    ) -> Result<Frame, Error> {
+    ) -> Result<Page, Error> {
         let slot = self.cspace_mgr.alloc(self.res)?;
         // For 4 entries, we only need a few hundred bytes, so 1 page is plenty.
         let (_, frame) = self.res.dma_alloc(Badge::null(), 1, slot)?;
 
         // Map the DMA frame to our virtual address space
-        self.vspace_mgr.map_frame(
+        self.vspace_mgr.map_page(
             frame.clone(),
             crate::layout::RING_VA,
             glenda::mem::Perms::READ | glenda::mem::Perms::WRITE,
@@ -89,12 +89,12 @@ impl<'a> NetService<'a> {
 
     pub fn setup_shm(
         &mut self,
-        frame: Frame,
+        frame: Page,
         vaddr: usize,
         paddr: usize,
         size: usize,
     ) -> Result<(), Error> {
-        self.vspace_mgr.map_frame(
+        self.vspace_mgr.map_page(
             frame.clone(),
             SHM_VA,
             glenda::mem::Perms::READ | glenda::mem::Perms::WRITE,
@@ -244,7 +244,7 @@ impl<'a> SystemService for NetService<'a> {
                     // Move the cap from recv window to a temporary slot
                     let slot = s.cspace_mgr.alloc(s.res)?;
                     CSPACE_CAP.transfer_self(s.recv, slot)?;
-                    let frame = Frame::from(slot);
+                    let frame = Page::from(slot);
                     s.setup_shm(frame, vaddr, paddr, size)?;
                     Ok(())
                 })

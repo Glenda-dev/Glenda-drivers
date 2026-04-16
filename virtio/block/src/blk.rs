@@ -1,4 +1,4 @@
-use glenda::cap::{Endpoint, Frame};
+use glenda::cap::{Endpoint, Page};
 use glenda::error::Error;
 use glenda::io::uring::{self as io_uring, IoUringServer};
 use glenda::mem::shm::SharedMemory;
@@ -56,7 +56,7 @@ impl VirtIOBlk {
 
     pub fn setup_shm(
         &mut self,
-        frame: Frame,
+        frame: Page,
         vaddr: usize,
         paddr: usize,
         size: usize,

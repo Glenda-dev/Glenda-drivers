@@ -20,8 +20,8 @@ impl<'a> SystemService for RamdiskService<'a> {
 
         // 2. Map MMIO
         let pages = (size + glenda::arch::mem::PGSIZE - 1) / glenda::arch::mem::PGSIZE;
-        self.vspace_mgr.map_frame(
-            glenda::cap::Frame::from(mmio.into()),
+        self.vspace_mgr.map_page(
+            glenda::cap::Page::from(mmio.into()),
             MMIO_VA,
             glenda::mem::Perms::READ | glenda::mem::Perms::WRITE,
             pages,

@@ -4,7 +4,7 @@ mod server;
 
 use crate::layout::{RING_VA, SHM_VA};
 use crate::Ns16550a;
-use glenda::cap::{CapPtr, Endpoint, Frame, Reply};
+use glenda::cap::{CapPtr, Endpoint, Page, Reply};
 use glenda::client::{DeviceClient, ResourceClient};
 use glenda::error::Error;
 use glenda::interface::{CSpaceService, ResourceService, VSpaceService};
@@ -48,12 +48,12 @@ impl<'a> UartService<'a> {
             connected_client: None,
         }
     }
-    fn setup_ring(&mut self, sq: u32, cq: u32, notify_ep: Endpoint) -> Result<Frame, Error> {
+    fn setup_ring(&mut self, sq: u32, cq: u32, notify_ep: Endpoint) -> Result<Page, Error> {
         log!("Setting up ring: sq={}, cq={}, notify_ep={}", sq, cq, notify_ep.cap());
         let slot = self.cspace.alloc(self.res)?;
-        let (_paddr, frame): (usize, Frame) = self.res.dma_alloc(Badge::null(), 1, slot)?;
+        let (_paddr, frame): (usize, Page) = self.res.dma_alloc(Badge::null(), 1, slot)?;
 
-        self.vspace.map_frame(
+        self.vspace.map_page(
             frame.clone(),
             RING_VA,
             glenda::mem::Perms::READ | glenda::mem::Perms::WRITE,
@@ -75,12 +75,12 @@ impl<'a> UartService<'a> {
 
     fn setup_shm(
         &mut self,
-        frame: Frame,
+        frame: Page,
         vaddr: usize,
         paddr: usize,
         size: usize,
     ) -> Result<(), Error> {
-        self.vspace.map_frame(
+        self.vspace.map_page(
             frame.clone(),
             SHM_VA,
             glenda::mem::Perms::READ | glenda::mem::Perms::WRITE,

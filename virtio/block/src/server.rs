@@ -1,6 +1,6 @@
 use crate::blk::*;
 use crate::layout::{IRQ_BADGE, RING_VA};
-use glenda::cap::{CapPtr, Endpoint, Frame, IrqHandler, Reply, CSPACE_CAP};
+use glenda::cap::{CapPtr, Endpoint, Page, IrqHandler, Reply, CSPACE_CAP};
 use glenda::client::{DeviceClient, ResourceClient};
 use glenda::drivers::interface::DriverService;
 use glenda::drivers::protocol::{block, BLOCK_PROTO};
@@ -51,14 +51,14 @@ impl<'a> BlockService<'a> {
         cq_entries: u32,
         notify_ep: Endpoint,
         _recv: CapPtr,
-    ) -> Result<Frame, Error> {
+    ) -> Result<Page, Error> {
         let slot = self.cspace_mgr.alloc(self.res)?;
         // For 4 entries, we only need a few hundred bytes, so 1 page is plenty.
         let (paddr, frame) = self.res.dma_alloc(Badge::null(), 1, slot)?;
         log!("setup_ring: dma_alloc ok, paddr={:#x}", paddr);
 
         // Map the DMA frame to our virtual address space
-        self.vspace_mgr.map_frame(
+        self.vspace_mgr.map_page(
             frame.clone(),
             RING_VA,
             glenda::mem::Perms::READ | glenda::mem::Perms::WRITE,
@@ -86,7 +86,7 @@ impl<'a> BlockService<'a> {
 
     pub fn setup_shm(
         &mut self,
-        frame: Frame,
+        frame: Page,
         vaddr: usize,
         paddr: usize,
         size: usize,
@@ -241,7 +241,7 @@ impl<'a> SystemService for BlockService<'a> {
 
                     CSPACE_CAP.transfer_self(recv_slot, slot)?;
 
-                    let frame = Frame::from(slot);
+                    let frame = Page::from(slot);
                     s.setup_shm(frame, vaddr, paddr, size)?;
                     Ok(())
                 })

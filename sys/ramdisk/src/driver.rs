@@ -1,5 +1,5 @@
 use crate::layout::{BUFFER_SLOT, BUFFER_VA, RING_SLOT, RING_VA};
-use glenda::cap::{CapType, Endpoint, Frame};
+use glenda::cap::{CapType, Endpoint, Page};
 use glenda::client::ResourceClient;
 use glenda::mem::Perms;
 use glenda::arch::mem::PGSIZE;
@@ -44,10 +44,10 @@ impl Ramdisk {
         size: usize,
         paddr: usize,
     ) -> Result<(), Error> {
-        let frame = Frame::from(BUFFER_SLOT);
+        let frame = Page::from(BUFFER_SLOT);
         let pages = (size + glenda::arch::mem::PGSIZE - 1) / glenda::arch::mem::PGSIZE;
 
-        vspace_mgr.map_frame(
+        vspace_mgr.map_page(
             frame.clone(),
             BUFFER_VA,
             glenda::mem::Perms::READ | glenda::mem::Perms::WRITE,
@@ -80,14 +80,14 @@ impl Ramdisk {
         sq_entries: u32,
         cq_entries: u32,
         endpoint: Endpoint,
-    ) -> Result<Frame, glenda::error::Error> {
+    ) -> Result<Page, glenda::error::Error> {
         log!("Setting up ring: SQ={}, CQ={}", sq_entries, cq_entries);
         // 1. Allocate a frame for the ring
         // Each SQE is 64 bytes, CQE is 16 bytes. Header is 64 bytes.
         // For 4 entries, we only need a few hundred bytes, so 1 page is plenty.
-        let frame = Frame::from(res.alloc(Badge::null(), CapType::Frame, 1, RING_SLOT)?);
+        let frame = Page::from(res.alloc(Badge::null(), CapType::Page, 1, RING_SLOT)?);
         // 2. Map it in our space
-        vspace_mgr.map_frame(
+        vspace_mgr.map_page(
             frame.clone(),
             RING_VA,
             Perms::READ | Perms::WRITE,

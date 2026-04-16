@@ -1,5 +1,5 @@
 use core::ptr::NonNull;
-use glenda::cap::{Endpoint, Frame};
+use glenda::cap::{Endpoint, Page};
 use glenda::io::uring::{self as io_uring, IoUringServer};
 use glenda::mem::shm::SharedMemory;
 use virtio_common::consts::*;
@@ -61,7 +61,7 @@ impl VirtIONet {
 
     pub fn setup_shm(
         &mut self,
-        frame: Frame,
+        frame: Page,
         vaddr: usize,
         paddr: usize,
         size: usize,

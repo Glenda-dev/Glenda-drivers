@@ -76,8 +76,8 @@ impl<'a> PciBusDriver<'a> {
         let map_len = align_up(ecam_window + offset, PGSIZE);
         let pages = map_len / PGSIZE;
 
-        self.vspace_mgr.map_frame(
-            glenda::cap::Frame::from(frame.into()),
+        self.vspace_mgr.map_page(
+            glenda::cap::Page::from(frame.into()),
             ECAM_MAP_VA,
             Perms::READ | Perms::WRITE,
             pages,

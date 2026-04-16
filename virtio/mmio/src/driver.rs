@@ -50,8 +50,8 @@ impl<'a> ProbeDriver for VirtioMmioDriver<'a> {
 
         // 2. Map it to our address space
         let pages = (size + PGSIZE - 1) / PGSIZE;
-        self.vspace_mgr.map_frame(
-            glenda::cap::Frame::from(frame.into()),
+        self.vspace_mgr.map_page(
+            glenda::cap::Page::from(frame.into()),
             MAP_VA,
             glenda::mem::Perms::READ | glenda::mem::Perms::WRITE,
             pages,

@@ -34,6 +34,12 @@ pub struct PciBusDriver<'a> {
 }
 
 impl<'a> PciBusDriver<'a> {
+    const PCI_COMMAND_REG: usize = 0x04;
+    const PCI_COMMAND_IO_ENABLE: u16 = 1 << 0;
+    const PCI_COMMAND_INTX_DISABLE: u16 = 1 << 10;
+    const QEMU_PCI_VENDOR_ID: u16 = 0x1b36;
+    const QEMU_PCI_SERIAL_DEVICE_ID: u16 = 0x0002;
+
     pub fn new(
         endpoint: Endpoint,
         dev: &'a mut DeviceClient,
@@ -128,6 +134,59 @@ impl<'a> PciBusDriver<'a> {
         ((self.read_u32(bus, dev, func, aligned) >> shift) & 0xff) as u8
     }
 
+    fn write_u16(&self, bus: u8, dev: u8, func: u8, reg: usize, val: u16) {
+        let aligned = reg & !0x3;
+        let shift = (reg & 0x2) * 8;
+        let mut word = self.read_u32(bus, dev, func, aligned);
+        word &= !(0xffffu32 << shift);
+        word |= (val as u32) << shift;
+
+        let addr = self.cfg_addr(bus, dev, func, aligned);
+        unsafe {
+            core::ptr::write_volatile(addr as *mut u32, word);
+        }
+    }
+
+    fn ensure_qemu_serial_intx_enabled(
+        &self,
+        bus: u8,
+        dev: u8,
+        func: u8,
+        vendor: u16,
+        device: u16,
+    ) {
+        if vendor != Self::QEMU_PCI_VENDOR_ID || device != Self::QEMU_PCI_SERIAL_DEVICE_ID {
+            return;
+        }
+
+        let before = self.read_u16(bus, dev, func, Self::PCI_COMMAND_REG);
+        let mut after = before;
+        after |= Self::PCI_COMMAND_IO_ENABLE;
+        after &= !Self::PCI_COMMAND_INTX_DISABLE;
+
+        if before != after {
+            self.write_u16(bus, dev, func, Self::PCI_COMMAND_REG, after);
+            let verify = self.read_u16(bus, dev, func, Self::PCI_COMMAND_REG);
+            log!(
+                "PCI serial {:02x}:{:02x}.{} command update: {:#06x} -> {:#06x} (verify={:#06x})",
+                bus,
+                dev,
+                func,
+                before,
+                after,
+                verify
+            );
+        } else {
+            log!(
+                "PCI serial {:02x}:{:02x}.{} command already set: {:#06x}",
+                bus,
+                dev,
+                func,
+                before
+            );
+        }
+    }
+
     fn device_present(&self, bus: u8, dev: u8, func: u8) -> bool {
         let vendor = self.read_u16(bus, dev, func, 0x00);
         vendor != 0xffff
@@ -197,8 +256,11 @@ impl<'a> PciBusDriver<'a> {
         let subclass = self.read_u8(bus, dev, func, 0x0a);
         let class_code = self.read_u8(bus, dev, func, 0x0b);
         let header_type = self.read_u8(bus, dev, func, 0x0e);
+        let command = self.read_u16(bus, dev, func, Self::PCI_COMMAND_REG);
         let irq_line = self.read_u8(bus, dev, func, 0x3c);
         let irq_pin = self.read_u8(bus, dev, func, 0x3d);
+
+        self.ensure_qemu_serial_intx_enabled(bus, dev, func, vendor_id, device_id);
 
         let mut compatible = Vec::new();
         compatible.push(alloc::format!("pciid:{:04x}:{:04x}", vendor_id, device_id));
@@ -238,7 +300,7 @@ impl<'a> PciBusDriver<'a> {
         }
 
         log!(
-            "PCI discovered {:02x}:{:02x}.{} vid:did={:04x}:{:04x} class={:02x}:{:02x}:{:02x} bars={} irq_source={} irq={:?}",
+            "PCI discovered {:02x}:{:02x}.{} vid:did={:04x}:{:04x} class={:02x}:{:02x}:{:02x} cmd={:#06x} irq_pin={} irq_line={} bars={} irq_source={} irq={:?}",
             bus,
             dev,
             func,
@@ -247,6 +309,9 @@ impl<'a> PciBusDriver<'a> {
             class_code,
             subclass,
             prog_if,
+            command,
+            irq_pin,
+            irq_line,
             mmio.len(),
             irq_source,
             irq

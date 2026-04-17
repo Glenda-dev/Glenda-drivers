@@ -5,7 +5,7 @@ use crate::layout::SHM_VA;
 use alloc::collections::VecDeque;
 use config::*;
 use consts::*;
-use glenda::cap::{Page, IrqHandler};
+use glenda::cap::{IrqHandler, Page};
 use glenda::drivers::interface::UartDriver;
 use glenda::error::Error;
 use glenda::io::ring_buffer::ShmRingBuffer;

@@ -37,6 +37,10 @@ pub const FCR_FIFO_RX_RESET: u8 = 1 << 1;
 pub const FCR_FIFO_TX_RESET: u8 = 1 << 2;
 pub const FCR_FIFO_DMA_MODE: u8 = 1 << 3;
 pub const FCR_FIFO_64BYTE: u8 = 1 << 5;
+pub const FCR_FIFO_TRIGGER_1: u8 = 0b00 << 6;
+pub const FCR_FIFO_TRIGGER_4: u8 = 0b01 << 6;
+pub const FCR_FIFO_TRIGGER_8: u8 = 0b10 << 6;
+pub const FCR_FIFO_TRIGGER_14: u8 = 0b11 << 6;
 
 // LCR bits
 pub const LCR_DATA_BITS_5: u8 = 0;

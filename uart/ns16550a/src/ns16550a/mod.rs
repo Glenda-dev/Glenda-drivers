@@ -12,6 +12,24 @@ use glenda::io::ring_buffer::ShmRingBuffer;
 use glenda::io::uring::IoUringServer;
 use glenda::mem::shm::SharedMemory;
 
+#[derive(Default)]
+pub struct UartStats {
+    pub rx_hw_lsr_overrun: usize,
+    pub rx_sw_drop: usize,
+    pub rx_ring_full_break: usize,
+    pub rx_budget_hit: usize,
+    pub tx_budget_hit: usize,
+    pub irq_event_budget_hit: usize,
+    pub irq_rx_bytes: usize,
+    pub irq_tx_bytes: usize,
+    pub irq_rx_batches: usize,
+}
+
+#[inline]
+fn should_log_sparse(count: usize) -> bool {
+    count == 1 || count.is_power_of_two() || count % LOG_THROTTLE_EVERY == 0
+}
+
 pub struct Ns16550a {
     pub base: usize,
     pub irq: IrqHandler,
@@ -21,6 +39,7 @@ pub struct Ns16550a {
     pub tx_ring: Option<&'static mut ShmRingBuffer>,
     pub rx_buffer: VecDeque<u8>,
     pub pending_read: Option<usize>,
+    pub stats: UartStats,
 }
 
 impl Ns16550a {
@@ -32,8 +51,9 @@ impl Ns16550a {
             shm: None,
             rx_ring: None,
             tx_ring: None,
-            rx_buffer: VecDeque::with_capacity(1024),
+            rx_buffer: VecDeque::with_capacity(RX_BUFFER_SOFT_LIMIT),
             pending_read: None,
+            stats: UartStats::default(),
         }
     }
 
@@ -81,9 +101,18 @@ impl Ns16550a {
     pub fn init_hw(&self) {
         self.set_baud_rate(DEFAULT_BAUD_RATE);
         unsafe {
-            // Enable RX interrupt
-            self.write_reg(IER, IER_RX_ENABLE);
+            // Enable RX + Receiver Line Status interrupt
+            self.write_reg(IER, IER_RX_ENABLE | IER_RLS_ENABLE);
         }
+        log!(
+            "config: baud={} ier={:#x} fifo={:#x} rx_buf_limit={} rx_irq_budget={} tx_irq_budget={}",
+            DEFAULT_BAUD_RATE,
+            IER_RX_ENABLE | IER_RLS_ENABLE,
+            FCR_FIFO_ENABLE | FCR_FIFO_RX_RESET | FCR_FIFO_TX_RESET | FCR_FIFO_TRIGGER_14,
+            RX_BUFFER_SOFT_LIMIT,
+            RX_IRQ_BUDGET_BYTES,
+            TX_IRQ_BUDGET_BYTES
+        );
     }
 
     pub fn set_baud_rate(&self, baud: u32) {
@@ -102,8 +131,11 @@ impl Ns16550a {
             // 8 bits, no parity, one stop bit (8N1), disable DLAB
             self.write_reg(LCR, LCR_DATA_BITS_8 | LCR_STOP_BITS_1 | LCR_PARITY_NONE);
 
-            // Enable FIFO, clear them, with 14-byte threshold
-            self.write_reg(FCR, FCR_FIFO_ENABLE | FCR_FIFO_RX_RESET | FCR_FIFO_TX_RESET);
+            // Enable FIFO, clear them, and set RX trigger to 14 bytes
+            self.write_reg(
+                FCR,
+                FCR_FIFO_ENABLE | FCR_FIFO_RX_RESET | FCR_FIFO_TX_RESET | FCR_FIFO_TRIGGER_14,
+            );
 
             // IRQs enabled, RTS/DTR set
             self.write_reg(MCR, MCR_OUT2 | MCR_RTS | MCR_DTR);
@@ -112,33 +144,106 @@ impl Ns16550a {
 
     pub fn handle_irq(&mut self) -> Result<(), Error> {
         let mut has_data = false;
+        let mut irq_events = 0usize;
         loop {
+            if irq_events >= IRQ_EVENT_BUDGET {
+                self.stats.irq_event_budget_hit += 1;
+                if should_log_sparse(self.stats.irq_event_budget_hit) {
+                    warn!(
+                        "IRQ event budget hit (count={}), postpone remaining events",
+                        self.stats.irq_event_budget_hit
+                    );
+                }
+                break;
+            }
+
             unsafe {
                 let iir = self.read_reg(IIR);
                 if iir & IIR_NO_INTERRUPT != 0 {
                     break;
                 }
 
+                irq_events += 1;
                 let id = iir & IIR_ID_MASK;
                 if id == IIR_RX_DATA_READY || id == IIR_TIMEOUT || id == IIR_RLS {
-                    while let Some(c) = self.getchar() {
-                        if self.rx_buffer.len() < 1024 {
-                            self.rx_buffer.push_back(c);
-                            has_data = true;
-                        } else {
-                            warn!("NS16550A: RX buffer overflow, dropping byte {:#x}", c);
-                        }
-                    }
+                    self.stats.irq_rx_batches += 1;
+                    has_data |= self.drain_rx_fifo_to_sw_buffer(RX_IRQ_BUDGET_BYTES) > 0;
                 } else if id == IIR_THR_EMPTY {
-                    self.process_tx_ring();
+                    let _ = self.process_tx_ring(TX_IRQ_BUDGET_BYTES);
+                } else {
+                    self.record_lsr_errors();
                 }
             }
         }
 
-        if has_data {
+        if has_data || !self.rx_buffer.is_empty() {
             self.process_rx_ring();
         }
         Ok(())
+    }
+
+    fn record_lsr_errors(&mut self) {
+        unsafe {
+            let lsr = self.read_reg(LSR);
+            if lsr & LSR_OVERRUN_ERROR != 0 {
+                self.stats.rx_hw_lsr_overrun += 1;
+                if should_log_sparse(self.stats.rx_hw_lsr_overrun) {
+                    warn!(
+                        "LSR overrun detected count={} (rx_sw_drop={}, rx_ring_full={})",
+                        self.stats.rx_hw_lsr_overrun,
+                        self.stats.rx_sw_drop,
+                        self.stats.rx_ring_full_break
+                    );
+                }
+            }
+        }
+    }
+
+    fn drain_rx_fifo_to_sw_buffer(&mut self, budget: usize) -> usize {
+        let mut drained = 0usize;
+        if budget == 0 {
+            return drained;
+        }
+
+        self.record_lsr_errors();
+
+        while drained < budget {
+            let Some(c) = self.getchar() else {
+                break;
+            };
+
+            if self.rx_buffer.len() < RX_BUFFER_SOFT_LIMIT {
+                self.rx_buffer.push_back(c);
+                self.stats.irq_rx_bytes += 1;
+                drained += 1;
+            } else {
+                self.stats.rx_sw_drop += 1;
+                if should_log_sparse(self.stats.rx_sw_drop) {
+                    warn!(
+                        "RX software buffer full, dropping byte {:#x} (count={})",
+                        c, self.stats.rx_sw_drop
+                    );
+                }
+            }
+        }
+
+        if drained >= budget {
+            unsafe {
+                if self.read_reg(LSR) & LSR_DATA_READY != 0 {
+                    self.stats.rx_budget_hit += 1;
+                    if should_log_sparse(self.stats.rx_budget_hit) {
+                        warn!(
+                            "RX budget hit count={} (budget={}, buffered={})",
+                            self.stats.rx_budget_hit,
+                            budget,
+                            self.rx_buffer.len()
+                        );
+                    }
+                }
+            }
+        }
+
+        drained
     }
 
     fn process_rx_ring(&mut self) {
@@ -146,12 +251,47 @@ impl Ns16550a {
         if let Some(ring) = &mut self.rx_ring {
             let mut pushed_total = 0;
             while !self.rx_buffer.is_empty() {
-                let first = *self.rx_buffer.front().unwrap();
-                if ring.push_byte(first) {
-                    self.rx_buffer.pop_front();
-                    pushed_total += 1;
-                } else {
+                let (front_len, pushed) = {
+                    let (front, _) = self.rx_buffer.as_slices();
+                    if front.is_empty() {
+                        (0usize, 0usize)
+                    } else {
+                        (front.len(), ring.push_slice(front))
+                    }
+                };
+
+                if front_len == 0 {
+                    break;
+                }
+
+                if pushed == 0 {
+                    self.stats.rx_ring_full_break += 1;
+                    if should_log_sparse(self.stats.rx_ring_full_break) {
+                        warn!(
+                            "RX shm ring full, postpone {} buffered bytes (count={})",
+                            self.rx_buffer.len(),
+                            self.stats.rx_ring_full_break
+                        );
+                    }
                     break; // Ring full
+                }
+
+                for _ in 0..pushed {
+                    let _ = self.rx_buffer.pop_front();
+                }
+                pushed_total += pushed;
+
+                // Partial push implies ring is full in this round.
+                if pushed < front_len {
+                    self.stats.rx_ring_full_break += 1;
+                    if should_log_sparse(self.stats.rx_ring_full_break) {
+                        warn!(
+                            "RX shm ring reached capacity mid-batch, {} bytes still buffered (count={})",
+                            self.rx_buffer.len(),
+                            self.stats.rx_ring_full_break
+                        );
+                    }
+                    break;
                 }
             }
 
@@ -171,8 +311,8 @@ impl Ns16550a {
             if let Some(sqe) = sqe {
                 match sqe.opcode {
                     glenda::io::uring::IOURING_OP_WRITE => {
-                        self.process_tx_ring();
-                        let res = if sqe.addr == 0 { 0 } else { sqe.len as i32 };
+                        let written = self.process_tx_ring(TX_SQ_BUDGET_BYTES);
+                        let res = if sqe.addr == 0 { written as i32 } else { sqe.len as i32 };
                         if let Some(ring) = &mut self.ring {
                             let _ = ring.complete(sqe.user_data, res);
                         }
@@ -195,36 +335,71 @@ impl Ns16550a {
                 break;
             }
         }
+
+        if !self.rx_buffer.is_empty() {
+            self.process_rx_ring();
+        }
     }
 
     pub fn handle_cq(&mut self) {
         // CQ notification from client means client has consumed some entries.
-        // We might want to check if TX Ring has space now if we were flow-controlled
+        // Opportunistically flush pending RX data into shm ring.
+        if !self.rx_buffer.is_empty() {
+            self.process_rx_ring();
+        }
     }
 
-    fn process_tx_ring(&mut self) {
-        let mut data_to_write = [0u8; 128];
-        let mut total_read = 0;
+    fn process_tx_ring(&mut self, budget: usize) -> usize {
+        let mut data_to_write = [0u8; TX_RING_CHUNK];
+        let mut total_written = 0;
+        let mut remaining_budget = budget;
 
-        loop {
-            if let Some(tx_ring) = &mut self.tx_ring {
-                total_read = tx_ring.pop_slice(&mut data_to_write);
-            }
+        if remaining_budget == 0 {
+            return 0;
+        }
+
+        while remaining_budget > 0 {
+            let chunk_len = core::cmp::min(data_to_write.len(), remaining_budget);
+            let total_read = if let Some(tx_ring) = &mut self.tx_ring {
+                tx_ring.pop_slice(&mut data_to_write[..chunk_len])
+            } else {
+                0
+            };
 
             if total_read > 0 {
                 for i in 0..total_read {
                     self.putchar(data_to_write[i]);
                 }
 
-                // Notify client that we've consumed TX data
-                if let Some(mut uring) = self.ring.take() {
-                    let _ = uring.complete(1, 0); // user_data 1 = WRITE
-                    self.ring = Some(uring);
+                total_written += total_read;
+                self.stats.irq_tx_bytes += total_read;
+                remaining_budget = remaining_budget.saturating_sub(total_read);
+
+                // Interleave a quick RX drain chance between TX chunks.
+                if self.drain_rx_fifo_to_sw_buffer(RX_TX_INTERLEAVE_BUDGET_BYTES) > 0 {
+                    self.process_rx_ring();
                 }
             } else {
                 break;
             }
         }
+
+        if remaining_budget == 0 {
+            let has_pending_tx = self.tx_ring.as_ref().map(|r| r.len() > 0).unwrap_or(false);
+            if has_pending_tx {
+                self.stats.tx_budget_hit += 1;
+                if should_log_sparse(self.stats.tx_budget_hit) {
+                    warn!(
+                        "TX budget hit count={} (budget={}, pending_tx={})",
+                        self.stats.tx_budget_hit,
+                        budget,
+                        self.tx_ring.as_ref().map(|r| r.len()).unwrap_or(0)
+                    );
+                }
+            }
+        }
+
+        total_written
     }
 
     fn getchar(&self) -> Option<u8> {

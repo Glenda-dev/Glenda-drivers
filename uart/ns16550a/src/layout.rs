@@ -1,4 +1,4 @@
-use glenda::cap::{CapPtr, Endpoint, Page, IrqHandler};
+use glenda::cap::{CapPtr, Endpoint, IrqHandler, Page};
 
 pub const DEVICE_SLOT: CapPtr = CapPtr::from(9);
 pub const MMIO_SLOT: CapPtr = CapPtr::from(10);

@@ -44,9 +44,8 @@ fn main() -> usize {
     service.listen(ENDPOINT_CAP, REPLY_SLOT, RECV_SLOT).expect("Failed to listen");
 
     SystemService::init(&mut service).expect("Failed to init SDHCI service");
-    if let Err(e) = service
-        .dev
-        .report_state(Badge::null(), glenda::protocol::init::ServiceState::Running)
+    if let Err(e) =
+        service.dev.report_state(Badge::null(), glenda::protocol::init::ServiceState::Running)
     {
         warn!("Failed to report driver running state: {:?}", e);
     }

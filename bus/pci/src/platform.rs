@@ -61,11 +61,7 @@ impl PciPlatformOps {
 
         match self.intx_routing {
             IntxRouting::None => None,
-            IntxRouting::QemuPlicSwizzle {
-                expected_ecam_phys,
-                expected_bus,
-                base_irq,
-            } => {
+            IntxRouting::QemuPlicSwizzle { expected_ecam_phys, expected_bus, base_irq } => {
                 if bus != expected_bus {
                     return None;
                 }

@@ -5,7 +5,7 @@ use crate::layout::{
 };
 use alloc::string::String;
 use core::ptr::NonNull;
-use glenda::cap::{CapPtr, CapType, Endpoint, Page, IrqHandler, Reply, Rights, CSPACE_CAP};
+use glenda::cap::{CapPtr, CapType, Endpoint, IrqHandler, Page, Reply, Rights, CSPACE_CAP};
 use glenda::client::{DeviceClient, ResourceClient};
 use glenda::drivers::protocol::{fb, FB_PROTO};
 use glenda::error::Error;

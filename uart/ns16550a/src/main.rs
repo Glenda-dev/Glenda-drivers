@@ -42,14 +42,12 @@ fn main() -> usize {
     service.listen(ENDPOINT_CAP, REPLY_SLOT, RECV_SLOT).expect("Failed to listen");
     if let Err(e) = SystemService::init(&mut service) {
         error!("Failed to init service: {:?}", e);
-        let _ = service
-            .dev
-            .report_state(Badge::null(), glenda::protocol::init::ServiceState::Failed);
+        let _ =
+            service.dev.report_state(Badge::null(), glenda::protocol::init::ServiceState::Failed);
         return 1;
     }
-    if let Err(e) = service
-        .dev
-        .report_state(Badge::null(), glenda::protocol::init::ServiceState::Running)
+    if let Err(e) =
+        service.dev.report_state(Badge::null(), glenda::protocol::init::ServiceState::Running)
     {
         warn!("Failed to report driver running state: {:?}", e);
     }

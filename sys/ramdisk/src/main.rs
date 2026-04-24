@@ -83,9 +83,8 @@ fn main() -> usize {
         error!("Failed to initialize: {:?}", e);
         return 1;
     }
-    if let Err(e) = service
-        .dev
-        .report_state(Badge::null(), glenda::protocol::init::ServiceState::Running)
+    if let Err(e) =
+        service.dev.report_state(Badge::null(), glenda::protocol::init::ServiceState::Running)
     {
         warn!("Failed to report driver running state: {:?}", e);
     }

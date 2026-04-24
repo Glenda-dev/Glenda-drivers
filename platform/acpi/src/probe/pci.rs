@@ -16,13 +16,7 @@ pub fn parse(
             let bus_end = entry.bus_number_end;
             let bus_count = bus_end.saturating_sub(bus_start) as usize + 1;
             let ecam_size = bus_count << 20;
-            log!(
-                "  ECAM: addr={:#x}, segment={}, bus-range={}..{}",
-                base,
-                seg,
-                bus_start,
-                bus_end
-            );
+            log!("  ECAM: addr={:#x}, segment={}, bus-range={}..{}", base, seg, bus_start, bus_end);
             devices.push(DeviceDescNode {
                 parent: usize::MAX,
                 desc: DeviceDesc {
@@ -46,10 +40,7 @@ pub fn parse(
                             "acpi.mcfg.bus-range".to_string(),
                             alloc::format!("{}-{}", bus_start, bus_end),
                         ),
-                        (
-                            "acpi.mcfg.ecam-size".to_string(),
-                            alloc::format!("{}", ecam_size),
-                        ),
+                        ("acpi.mcfg.ecam-size".to_string(), alloc::format!("{}", ecam_size),),
                     ],
                 },
             });

@@ -43,9 +43,9 @@ struct PlicEntry {
     header: acpi::sdt::madt::EntryHeader, // 0..2
     version: u8,                          // 2..3
     id: u8,                               // 3..4
-    hardware_id: usize,                     // 4..12
+    hardware_id: usize,                   // 4..12
     total_irq: u16,                       // 12..14
-    base_addr: usize,                       // 14..22
+    base_addr: usize,                     // 14..22
     size: u32,                            // 22..26
     gsi_base: u32,                        // 26..30
     reserved: [u8; 6],                    // 30..36

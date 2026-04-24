@@ -49,14 +49,12 @@ fn main() -> usize {
     );
     if let Err(e) = service.init() {
         error!("Failed to initialize GPU service: {:?}", e);
-        let _ = service
-            .dev
-            .report_state(Badge::null(), glenda::protocol::init::ServiceState::Failed);
+        let _ =
+            service.dev.report_state(Badge::null(), glenda::protocol::init::ServiceState::Failed);
         return 1;
     }
-    if let Err(e) = service
-        .dev
-        .report_state(Badge::null(), glenda::protocol::init::ServiceState::Running)
+    if let Err(e) =
+        service.dev.report_state(Badge::null(), glenda::protocol::init::ServiceState::Running)
     {
         warn!("Failed to report driver running state: {:?}", e);
     }

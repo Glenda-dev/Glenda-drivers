@@ -39,7 +39,10 @@ impl<'a> DriverService for UartService<'a> {
                         irq_enabled = true;
                     }
                     Err(e) => {
-                        warn!("IRQ notification unavailable, falling back to polling mode: {:?}", e);
+                        warn!(
+                            "IRQ notification unavailable, falling back to polling mode: {:?}",
+                            e
+                        );
                     }
                 }
             }

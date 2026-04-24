@@ -10,12 +10,12 @@ use crate::layout::{DEVICE_CAP, DEVICE_SLOT, ENDPOINT_SLOT, MMIO_SLOT};
 use glenda::cap::Endpoint;
 use glenda::cap::MONITOR_CAP;
 use glenda::client::{DeviceClient, ResourceClient};
+use glenda::drivers::interface::BusDriver;
 use glenda::interface::{DeviceService, ResourceService};
 use glenda::ipc::Badge;
 use glenda::protocol::init::ServiceState;
 use glenda::protocol::resource::ResourceType;
 use glenda::protocol::resource::DEVICE_ENDPOINT;
-use glenda::drivers::interface::BusDriver;
 
 mod arch;
 mod driver;

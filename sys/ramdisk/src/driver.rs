@@ -1,13 +1,13 @@
 use crate::layout::{BUFFER_SLOT, BUFFER_VA, RING_SLOT, RING_VA};
+use glenda::arch::mem::PGSIZE;
 use glenda::cap::{CapType, Endpoint, Page};
 use glenda::client::ResourceClient;
-use glenda::mem::Perms;
-use glenda::arch::mem::PGSIZE;
 use glenda::error::Error;
 use glenda::interface::{ResourceService, VSpaceService};
 use glenda::io::uring::{IOURING_OP_READ, IOURING_OP_SYNC, IOURING_OP_WRITE, IoUringSqe};
 use glenda::io::uring::{IoUringBuffer as IoUring, IoUringServer};
 use glenda::ipc::Badge;
+use glenda::mem::Perms;
 use glenda::mem::shm::SharedMemory;
 use glenda::utils::manager::{CSpaceManager, VSpaceManager};
 
@@ -96,9 +96,7 @@ impl Ramdisk {
             cspace_mgr,
         )?;
         // 3. Init IoUring
-        let ring = unsafe {
-            IoUring::new(RING_VA as *mut u8, PGSIZE, sq_entries, cq_entries)
-        };
+        let ring = unsafe { IoUring::new(RING_VA as *mut u8, PGSIZE, sq_entries, cq_entries) };
         let mut server = IoUringServer::new(ring);
         server.set_client_notify(endpoint);
         self.ring = Some(server);

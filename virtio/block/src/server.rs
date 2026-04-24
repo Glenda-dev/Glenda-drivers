@@ -1,6 +1,6 @@
 use crate::blk::*;
 use crate::layout::{IRQ_BADGE, RING_VA};
-use glenda::cap::{CapPtr, Endpoint, Page, IrqHandler, Reply, CSPACE_CAP};
+use glenda::cap::{CapPtr, Endpoint, IrqHandler, Page, Reply, CSPACE_CAP};
 use glenda::client::{DeviceClient, ResourceClient};
 use glenda::drivers::interface::DriverService;
 use glenda::drivers::protocol::{block, BLOCK_PROTO};

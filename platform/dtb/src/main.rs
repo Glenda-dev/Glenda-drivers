@@ -56,8 +56,9 @@ fn main() -> usize {
     // 2. Interact with SystemService for initialization
     if let Err(e) = SystemService::init(&mut driver) {
         error!("Init failed: {:?}", e);
-        let _ =
-            driver.dev_client.report_state(Badge::null(), glenda::protocol::init::ServiceState::Failed);
+        let _ = driver
+            .dev_client
+            .report_state(Badge::null(), glenda::protocol::init::ServiceState::Failed);
         return 1;
     }
     if let Err(e) =

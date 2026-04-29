@@ -28,7 +28,7 @@ fn main() -> usize {
     glenda::console::init_logging("VirtIO-Net");
     log!("Starting...");
     let mut cspace_mgr = CSpaceManager::new(CSPACE_CAP, 16);
-    let mut vspace_mgr = VSpaceManager::new(glenda::cap::VSPACE_CAP, 0x7000_0000, 0x8000_0000);
+    let mut vspace_mgr = VSpaceManager::new(glenda::cap::VSPACE_CAP, 0x7000_0000, 0x1000_0000);
 
     let mut res_client = ResourceClient::new(MONITOR_CAP);
     res_client

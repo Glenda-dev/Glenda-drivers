@@ -39,7 +39,7 @@ fn main() -> usize {
         .expect("Failed to allocate endpoint cap for service");
 
     let mut cspace_mgr = CSpaceManager::new(glenda::cap::CSPACE_CAP, 16);
-    let mut vspace_mgr = VSpaceManager::new(glenda::cap::VSPACE_CAP, 0x7000_0000, 0x8000_0000);
+    let mut vspace_mgr = VSpaceManager::new(glenda::cap::VSPACE_CAP, 0x7000_0000, 0x1000_0000);
     let mut service =
         BlockService::new(&mut dev_client, &mut res_client, &mut cspace_mgr, &mut vspace_mgr);
     service.listen(ENDPOINT_CAP, REPLY_SLOT, RECV_SLOT).expect("Failed to listen");
